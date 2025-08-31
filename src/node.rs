@@ -2,8 +2,9 @@
 
 use std::rc::Rc;
 
-mod node_iterator;
-use crate::node::node_iterator::NodeIterator;
+mod iterator;
+mod path_iterator;
+use crate::node::iterator::NodeIterator;
 
 #[derive(Debug, Clone)]
 pub struct Edge<T> {
