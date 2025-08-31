@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use std::{collections::VecDeque, rc::Rc};
+use std::rc::Rc;
+
+mod node_iterator;
+use crate::node::node_iterator::NodeIterator;
 
 #[derive(Debug, Clone)]
 pub struct Edge<T> {
@@ -183,50 +186,10 @@ impl<T: Clone> Node<T> {
         None
     }
 
-    pub fn into_node_iterator(self) -> NodeIterator<T> {
+    pub fn into_node_iterator(self) -> impl Iterator<Item = (&'static str, T)> {
         NodeIterator {
             node: Some(Rc::new(self)),
             stack: Vec::new(),
         }
-    }
-}
-
-pub struct NodeIterator<T> {
-    node: Option<Rc<Node<T>>>,
-    stack: Vec<VecDeque<Edge<T>>>,
-}
-
-impl<T: Clone> Iterator for NodeIterator<T> {
-    type Item = (&'static str, T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.stack.is_empty() && self.node.is_some() {
-            self.stack.push(VecDeque::from([Edge {
-                label: 0,
-                node: self.node.as_ref().unwrap().clone(),
-            }]));
-        }
-
-        while !self.stack.is_empty() {
-            let last_edges = self.stack.last_mut().unwrap();
-            let elem = last_edges.pop_front().unwrap().node;
-
-            // note: remove from stack if the edges are empty
-            if last_edges.is_empty() {
-                self.stack.pop();
-            }
-
-            if !elem.edges.is_empty() {
-                self.stack.push(VecDeque::from_iter(elem.edges.clone()));
-            }
-
-            if elem.leaf.is_some() {
-                return Some((
-                    elem.leaf.as_ref().unwrap().key,
-                    elem.leaf.as_ref().unwrap().value.clone(),
-                ));
-            }
-        }
-        None
     }
 }
