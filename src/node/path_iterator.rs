@@ -2,12 +2,15 @@ use std::rc::Rc;
 
 use crate::node::{LeafNode, Node};
 
-pub struct PathIterator<T> {
+pub struct PathIterator<T>
+where
+    T: Clone + Default,
+{
     pub(crate) node: Option<Rc<Node<T>>>,
     pub(crate) path: &'static str,
 }
 
-impl<T: Clone> Iterator for PathIterator<T> {
+impl<T: Clone + Default> Iterator for PathIterator<T> {
     type Item = (&'static str, T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -28,7 +31,7 @@ impl<T: Clone> Iterator for PathIterator<T> {
     }
 }
 
-impl<T: Clone> PathIterator<T> {
+impl<T: Clone + Default> PathIterator<T> {
     fn iterate(&mut self) {
         if self.path.len() == 0 {
             self.node = None;

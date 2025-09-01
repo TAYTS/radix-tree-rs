@@ -6,41 +6,47 @@ mod iterator;
 mod path_iterator;
 use crate::node::iterator::NodeIterator;
 
-#[derive(Debug, Clone)]
-pub struct Edge<T> {
+#[derive(Debug, Default, Clone)]
+pub struct Edge<T>
+where
+    T: Default + Clone,
+{
     label: u8,
     node: Rc<Node<T>>,
 }
 
 pub type Edges<T> = Vec<Edge<T>>;
 
-impl<T> PartialOrd for Edge<T> {
+impl<T: Clone + Default> PartialOrd for Edge<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.label.cmp(&other.label))
     }
 }
 
-impl<T> PartialEq for Edge<T> {
+impl<T: Clone + Default> PartialEq for Edge<T> {
     fn eq(&self, other: &Self) -> bool {
         self.label == other.label
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Node<T> {
+#[derive(Debug, Default, Clone)]
+pub struct Node<T>
+where
+    T: Default + Clone,
+{
     // TODO: add on change callback or channel
     prefix: &'static str,
     leaf: Option<LeafNode<T>>,
     edges: Edges<T>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct LeafNode<T> {
     value: T,
     key: &'static str,
 }
 
-impl<T: Clone> Node<T> {
+impl<T: Default + Clone> Node<T> {
     fn is_leaf(&self) -> bool {
         self.leaf.is_some()
     }

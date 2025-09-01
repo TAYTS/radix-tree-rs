@@ -2,19 +2,22 @@ use std::{collections::VecDeque, rc::Rc};
 
 use crate::node::{Edge, Node};
 
-pub(crate) struct NodeIterator<T> {
+pub(crate) struct NodeIterator<T>
+where
+    T: Default + Clone,
+{
     pub(crate) node: Option<Rc<Node<T>>>,
     pub(crate) stack: Vec<VecDeque<Edge<T>>>,
 }
 
-impl<T: Clone> Iterator for NodeIterator<T> {
+impl<T: Clone + Default> Iterator for NodeIterator<T> {
     type Item = (&'static str, T);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stack.is_empty() && self.node.is_some() {
             self.stack.push(VecDeque::from([Edge {
-                label: 0,
                 node: self.node.as_ref().unwrap().clone(),
+                ..Default::default()
             }]));
         }
 
