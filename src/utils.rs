@@ -14,6 +14,8 @@ pub(crate) fn longest_prefix(key1: &str, key2: &str) -> usize {
     i
 }
 
+pub trait NodeValue = Default + std::fmt::Debug + Clone + std::hash::Hash + PartialEq + Eq;
+
 #[cfg(test)]
 mod tests {
     use super::*;
