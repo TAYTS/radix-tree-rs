@@ -50,7 +50,7 @@ impl<T: NodeValue> PartialEq for Edges<T> {
 }
 
 impl<T: NodeValue> Edges<T> {
-    // add_edge adds an edge to the edges maintaining sorted order
+    /// add_edge adds an edge to the edges maintaining sorted order
     fn add_edge(&self, edge: Edge<T>) {
         let insert_idx = self
             .0
@@ -60,7 +60,7 @@ impl<T: NodeValue> Edges<T> {
         self.0.write().insert(insert_idx, edge);
     }
 
-    // replace_edge replaces the node of the edge with the same label
+    /// replace_edge replaces the node of the edge with the same label
     fn replace_edge(&self, edge: Edge<T>) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -75,7 +75,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    // get_edge return the index and node of the edge with the given label
+    /// get_edge return the index and node of the edge with the given label
     fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
         let edge_idx = self_edges
@@ -90,7 +90,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    // get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
+    /// get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
     fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
         let edge_idx = self_edges
@@ -105,7 +105,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    // delete_edge removes the edge with the given label
+    /// delete_edge removes the edge with the given label
     fn delete_edge(&self, label: u8) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -171,52 +171,71 @@ impl<T: NodeValue> PartialEq for Node<T> {
 impl<T: NodeValue> Eq for Node<T> {}
 
 impl<T: NodeValue> Node<T> {
+    /// is_leaf returns true if the node is a leaf node
     pub(crate) fn is_leaf(&self) -> bool {
         self.leaf.is_some()
     }
 
+    /// add_edge adds an edge to the node
     pub(crate) fn add_edge(&self, edge: Edge<T>) {
         self.edges.add_edge(edge);
     }
 
+    /// replace_edge replaces the node of the edge with the same label
     pub(crate) fn replace_edge(&self, edge: Edge<T>) {
         self.edges.replace_edge(edge);
     }
 
+    /// get_edge return the index and node of the edge with the given label
     pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_edge(label)
     }
 
+    /// get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
     pub(crate) fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_lower_bound_edge(label)
     }
 
+    /// delete_edge removes the edge with the given label
     pub(crate) fn delete_edge(&self, label: u8) {
         self.edges.delete_edge(label);
     }
 
-    // pub fn get(&self, label: &str) -> Option<T> {
-    //     let mut search = label;
-    //     loop {
-    //         if search.is_empty() {
-    //             if self.is_leaf() && self.leaf.is_some() {
-    //                 return Some(self.leaf.as_ref().unwrap().value.clone());
-    //             }
-    //             break;
-    //         }
+    /// get returns the value associated with the given label if exists
+    pub fn get(&self, label: &str) -> Option<T> {
+        let mut search_bytes = label.as_bytes();
+        let mut current_node: Option<Arc<Node<T>>> = None;
 
-    //         if self.get_edge(search.as_bytes()[0]).is_none() {
-    //             break;
-    //         }
+        loop {
+            let node = match current_node.as_ref() {
+                Some(n) => n,
+                None => self,
+            };
 
-    //         if search.starts_with(self.prefix.as_str()) {
-    //             search = &search[self.prefix.len()..];
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     None
-    // }
+            if search_bytes.is_empty() {
+                if node.is_leaf() {
+                    let value = node.leaf.as_ref().unwrap().read().value.clone();
+                    return Some(value);
+                }
+                break;
+            }
+
+            let node = match node.get_edge(search_bytes[0]) {
+                Some((_, n)) => {
+                    current_node.replace(n.clone());
+                    n
+                }
+                None => break,
+            };
+
+            if search_bytes.starts_with(node.prefix.as_str().as_bytes()) {
+                search_bytes = &search_bytes[node.prefix.len()..];
+            } else {
+                break;
+            }
+        }
+        None
+    }
 
     // pub fn longest_prefix(&self, key: &str) -> Option<(&str, T)> {
     //     let mut last: Option<&LeafNode<T>> = None;
