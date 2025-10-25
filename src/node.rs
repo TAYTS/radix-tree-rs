@@ -90,6 +90,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
+    // get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
     fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
         let edge_idx = self_edges
@@ -104,15 +105,18 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    // fn delete_edge(&mut self, label: u8) {
-    //     let edge_idx = self
-    //         .edges
-    //         .binary_search_by(|e| e.label.cmp(&label))
-    //         .unwrap_or_else(|idx| idx);
-    //     if edge_idx < self.edges.len() && self.edges[edge_idx].label == label {
-    //         self.edges.remove(edge_idx);
-    //     }
-    // }
+    // delete_edge removes the edge with the given label
+    fn delete_edge(&self, label: u8) {
+        let self_edges = self.0.read();
+        let self_edges_slice = self_edges.as_slice();
+        let edge_idx = self_edges_slice
+            .binary_search_by(|e| e.label.cmp(&label))
+            .unwrap_or_else(|idx| idx);
+        if edge_idx < self_edges_slice.len() && self_edges_slice[edge_idx].label == label {
+            drop(self_edges); // release read lock before acquiring write lock
+            self.0.write().remove(edge_idx);
+        }
+    }
 }
 
 /// An immutable node in the radix tree, which may contains a value if it is a leaf node.
@@ -185,6 +189,10 @@ impl<T: NodeValue> Node<T> {
 
     pub(crate) fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_lower_bound_edge(label)
+    }
+
+    pub(crate) fn delete_edge(&self, label: u8) {
+        self.edges.delete_edge(label);
     }
 
     // pub fn get(&self, label: &str) -> Option<T> {
