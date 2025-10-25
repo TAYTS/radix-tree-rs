@@ -78,12 +78,11 @@ impl<T: NodeValue> Edges<T> {
     // get_edge return the index and node of the edge with the given label
     fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
-        let self_edges_slice = self_edges.as_slice();
-        let edge_idx = self_edges_slice
+        let edge_idx = self_edges
+            .as_slice()
             .binary_search_by(|e| e.label.cmp(&label))
             .unwrap_or_else(|idx| idx);
-
-        if edge_idx < self_edges_slice.len() && self_edges_slice[edge_idx].label == label {
+        if edge_idx < self_edges.len() && self_edges[edge_idx].label == label {
             let node = self_edges[edge_idx].node.clone();
             Some((edge_idx, node))
         } else {
@@ -91,17 +90,19 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    // fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, &Node<T>)> {
-    //     let edge_idx = self
-    //         .edges
-    //         .binary_search_by(|e| e.label.cmp(&label))
-    //         .unwrap_or_else(|idx| idx);
-    //     if edge_idx < self.edges.len() {
-    //         Some((edge_idx, &self.edges[edge_idx].node))
-    //     } else {
-    //         None
-    //     }
-    // }
+    fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
+        let self_edges = self.0.read();
+        let edge_idx = self_edges
+            .as_slice()
+            .binary_search_by(|e| e.label.cmp(&label))
+            .unwrap_or_else(|idx| idx);
+        if edge_idx < self_edges.len() {
+            let node = self_edges[edge_idx].node.clone();
+            Some((edge_idx, node))
+        } else {
+            None
+        }
+    }
 
     // fn delete_edge(&mut self, label: u8) {
     //     let edge_idx = self
@@ -180,6 +181,10 @@ impl<T: NodeValue> Node<T> {
 
     pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_edge(label)
+    }
+
+    pub(crate) fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
+        self.edges.get_lower_bound_edge(label)
     }
 
     // pub fn get(&self, label: &str) -> Option<T> {

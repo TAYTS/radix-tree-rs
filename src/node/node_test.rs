@@ -169,4 +169,43 @@ mod tests {
         let result = node.get_edge(b'c');
         assert!(result.is_none(), "should not find edge 'c'");
     }
+
+    #[test]
+    fn test_get_lower_bound_edge() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_c = Edge {
+            label: b'c',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a.clone());
+        node.add_edge(edge_c.clone());
+
+        // get lower bound edge for 'b' (should return edge 'c')
+        let result = node.get_lower_bound_edge(b'b');
+        assert!(result.is_some(), "should find lower bound edge for 'b'");
+        let (idx, found_node) = result.unwrap();
+        assert_eq!(idx, 1, "lower bound edge for 'b' should be at index 1");
+        assert_eq!(
+            *found_node, *edge_c.node,
+            "found node for lower bound edge should match edge 'c'"
+        );
+
+        // get lower bound edge for 'c' (should return edge 'c')
+        let result = node.get_lower_bound_edge(b'c');
+        assert!(result.is_some(), "should find lower bound edge for 'c'");
+        let (idx, found_node) = result.unwrap();
+        assert_eq!(idx, 1, "lower bound edge for 'c' should be at index 1");
+        assert_eq!(
+            *found_node, *edge_c.node,
+            "found node for lower bound edge should match edge 'c'"
+        );
+
+        // get lower bound edge for 'd' (should return None)
+        let result = node.get_lower_bound_edge(b'd');
+        assert!(result.is_none(), "should not find lower bound edge for 'd'");
+    }
 }
