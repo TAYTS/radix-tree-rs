@@ -33,7 +33,7 @@ mod tests {
             let node: Node<TestValue> = Node::default();
             let edge: Edge<TestValue> = Edge {
                 label: b'a',
-                node: Node::default(),
+                node: Node::default().into(),
             };
 
             node.add_edge(edge.clone());
@@ -48,11 +48,11 @@ mod tests {
             let node: Node<TestValue> = Node::default();
             let edge_b = Edge {
                 label: b'b',
-                node: Node::default(),
+                node: Node::default().into(),
             };
             let edge_d = Edge {
                 label: b'd',
-                node: Node::default(),
+                node: Node::default().into(),
             };
             node.add_edge(edge_b.clone());
             node.add_edge(edge_d.clone());
@@ -60,7 +60,7 @@ mod tests {
             // insert edge that should go in the middle
             let edge_c = Edge {
                 label: b'c',
-                node: Node::default(),
+                node: Node::default().into(),
             };
             node.add_edge(edge_c.clone());
 
@@ -80,11 +80,11 @@ mod tests {
         let node: Node<TestValue> = Node::default();
         let edge_a = Edge {
             label: b'a',
-            node: Node::default(),
+            node: Node::default().into(),
         };
         let edge_b = Edge {
             label: b'b',
-            node: Node::default(),
+            node: Node::default().into(),
         };
         node.add_edge(edge_a.clone());
         node.add_edge(edge_b.clone());
@@ -101,7 +101,8 @@ mod tests {
                     .into(),
                 ),
                 ..Default::default()
-            },
+            }
+            .into(),
         };
         node.replace_edge(new_edge_a.clone());
 
@@ -118,15 +119,54 @@ mod tests {
         let node: Node<TestValue> = Node::default();
         let edge_a = Edge {
             label: b'a',
-            node: Node::default(),
+            node: Node::default().into(),
         };
         node.add_edge(edge_a);
 
         // attempt to replace non-existent edge 'b'
         let edge_b = Edge {
             label: b'b',
-            node: Node::default(),
+            node: Node::default().into(),
         };
         node.replace_edge(edge_b);
+    }
+
+    #[test]
+    fn test_get_edge() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_b = Edge {
+            label: b'b',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a.clone());
+        node.add_edge(edge_b.clone());
+
+        // get existing edge 'a'
+        let result = node.get_edge(b'a');
+        assert!(result.is_some(), "should find edge 'a'");
+        let (idx, found_node) = result.unwrap();
+        assert_eq!(idx, 0, "edge 'a' should be at index 0");
+        assert_eq!(
+            *found_node, *edge_a.node,
+            "found node for edge 'a' should match"
+        );
+
+        // get existing edge 'b'
+        let result = node.get_edge(b'b');
+        assert!(result.is_some(), "should find edge 'b'");
+        let (idx, found_node) = result.unwrap();
+        assert_eq!(idx, 1, "edge 'b' should be at index 1");
+        assert_eq!(
+            *found_node, *edge_b.node,
+            "found node for edge 'b' should match"
+        );
+
+        // get non-existent edge 'c'
+        let result = node.get_edge(b'c');
+        assert!(result.is_none(), "should not find edge 'c'");
     }
 }

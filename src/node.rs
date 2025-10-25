@@ -1,7 +1,5 @@
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
-// mod iterator;
-// mod path_iterator;
 mod node_test;
 use parking_lot::RwLock;
 
@@ -13,7 +11,7 @@ where
     T: NodeValue,
 {
     pub(crate) label: u8,
-    pub(crate) node: Node<T>,
+    pub(crate) node: Arc<Node<T>>,
 }
 
 impl<T: NodeValue> PartialOrd for Edge<T> {
@@ -52,6 +50,7 @@ impl<T: NodeValue> PartialEq for Edges<T> {
 }
 
 impl<T: NodeValue> Edges<T> {
+    // add_edge adds an edge to the edges maintaining sorted order
     fn add_edge(&self, edge: Edge<T>) {
         let insert_idx = self
             .0
@@ -61,6 +60,7 @@ impl<T: NodeValue> Edges<T> {
         self.0.write().insert(insert_idx, edge);
     }
 
+    // replace_edge replaces the node of the edge with the same label
     fn replace_edge(&self, edge: Edge<T>) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -69,23 +69,27 @@ impl<T: NodeValue> Edges<T> {
             .unwrap_or_else(|idx| idx);
         if edge_idx < self_edges_slice.len() && self_edges_slice[edge_idx].label == edge.label {
             drop(self_edges); // release read lock before acquiring write lock
-            self.0.write()[edge_idx] = edge;
+            self.0.write()[edge_idx].node = edge.node;
         } else {
             panic!("replace missing edge");
         }
     }
 
-    // pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, &Node<T>)> {
-    //     let edge_idx = self
-    //         .edges
-    //         .binary_search_by(|e| e.label.cmp(&label))
-    //         .unwrap_or_else(|idx| idx);
-    //     if edge_idx < self.edges.len() && self.edges[edge_idx].label == label {
-    //         Some((edge_idx, &self.edges[edge_idx].node))
-    //     } else {
-    //         None
-    //     }
-    // }
+    // get_edge return the index and node of the edge with the given label
+    fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
+        let self_edges = self.0.read();
+        let self_edges_slice = self_edges.as_slice();
+        let edge_idx = self_edges_slice
+            .binary_search_by(|e| e.label.cmp(&label))
+            .unwrap_or_else(|idx| idx);
+
+        if edge_idx < self_edges_slice.len() && self_edges_slice[edge_idx].label == label {
+            let node = self_edges[edge_idx].node.clone();
+            Some((edge_idx, node))
+        } else {
+            None
+        }
+    }
 
     // fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, &Node<T>)> {
     //     let edge_idx = self
@@ -172,6 +176,10 @@ impl<T: NodeValue> Node<T> {
 
     pub(crate) fn replace_edge(&self, edge: Edge<T>) {
         self.edges.replace_edge(edge);
+    }
+
+    pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
+        self.edges.get_edge(label)
     }
 
     // pub fn get(&self, label: &str) -> Option<T> {
