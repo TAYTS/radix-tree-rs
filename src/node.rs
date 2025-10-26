@@ -117,6 +117,31 @@ impl<T: NodeValue> Edges<T> {
             self.0.write().remove(edge_idx);
         }
     }
+
+    /// is_empty returns true if there are no edges
+    fn is_empty(&self) -> bool {
+        self.0.read().is_empty()
+    }
+
+    /// first returns the first edge's node if exists
+    fn first(&self) -> Option<Arc<Node<T>>> {
+        let self_edges = self.0.read();
+        if !self_edges.is_empty() {
+            Some(self_edges[0].node.clone())
+        } else {
+            None
+        }
+    }
+
+    /// last returns the last edge's node if exists
+    fn last(&self) -> Option<Arc<Node<T>>> {
+        let self_edges = self.0.read();
+        if !self_edges.is_empty() {
+            Some(self_edges[self_edges.len() - 1].node.clone())
+        } else {
+            None
+        }
+    }
 }
 
 /// An immutable node in the radix tree, which may contains a value if it is a leaf node.
@@ -280,49 +305,53 @@ impl<T: NodeValue> Node<T> {
         }
     }
 
-    // pub fn minimum(&self) -> Option<(&str, T)> {
-    //     let mut current = self;
-    //     loop {
-    //         if current.is_leaf() {
-    //             return Some((
-    //                 current.leaf.as_ref().unwrap().key.as_str(),
-    //                 current.leaf.as_ref().unwrap().value.clone(),
-    //             ));
-    //         }
-    //         if !current.edges.is_empty() {
-    //             current = &current.edges.first().unwrap().node;
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     None
-    // }
+    /// minimum returns the key and value with the minimum key in the subtree.
+    pub fn minimum(&self) -> Option<(String, T)> {
+        let mut current_node: Option<Arc<Node<T>>> = None;
+        loop {
+            let node = match current_node.as_ref() {
+                Some(n) => n,
+                None => self,
+            };
 
-    // pub fn maximum(&self) -> Option<(&str, T)> {
-    //     let mut current = self;
-    //     loop {
-    //         if !current.edges.is_empty() {
-    //             current = &current.edges.last().unwrap().node;
-    //             continue;
-    //         }
-    //         if current.is_leaf() {
-    //             return Some((
-    //                 current.leaf.as_ref().unwrap().key.as_str(),
-    //                 current.leaf.as_ref().unwrap().value.clone(),
-    //             ));
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     None
-    // }
+            if node.is_leaf() {
+                let leaf_node = node.leaf.as_ref().unwrap().read();
+                return Some((leaf_node.key.clone(), leaf_node.value.clone()));
+            }
 
-    // pub fn into_node_iterator(self) -> impl Iterator<Item = (&'static str, T)> {
-    //     NodeIterator {
-    //         node: Some(Arc::new(self)),
-    //         stack: Vec::new(),
-    //     }
-    // }
+            match node.edges.first() {
+                Some(first_edge_node) => {
+                    current_node.replace(first_edge_node);
+                }
+                None => break,
+            }
+        }
+        None
+    }
+
+    /// maximum returns the key and value with the maximum key in the subtree.
+    pub fn maximum(&self) -> Option<(String, T)> {
+        let mut current_node: Option<Arc<Node<T>>> = None;
+        loop {
+            let node = match current_node.as_ref() {
+                Some(n) => n,
+                None => self,
+            };
+
+            if let Some(last_edge_node) = node.edges.last() {
+                current_node.replace(last_edge_node);
+                continue;
+            }
+
+            if node.is_leaf() {
+                let leaf_node = node.leaf.as_ref().unwrap().read();
+                return Some((leaf_node.key.clone(), leaf_node.value.clone()));
+            } else {
+                break;
+            }
+        }
+        None
+    }
 }
 
 /// A leaf node represents the end of a key in the radix tree and holds the associated value.

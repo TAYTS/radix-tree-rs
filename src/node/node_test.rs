@@ -253,9 +253,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get() {
-        // TODO: setup this more using Node methods
+    fn get_test_tree() -> Node<TestValue> {
         let root: Node<TestValue> = Node::default();
         let edge_0 = Edge {
             label: b'0',
@@ -372,6 +370,13 @@ mod tests {
         edge_0.node.add_edge(edge_00);
         root.add_edge(edge_0);
         root.add_edge(edge_100);
+
+        root
+    }
+
+    #[test]
+    fn test_get() {
+        let root = get_test_tree();
 
         {
             let result = root.get("001");
@@ -441,122 +446,7 @@ mod tests {
 
     #[test]
     fn test_longest_prefix() {
-        let root: Node<TestValue> = Node::default();
-        let edge_0 = Edge {
-            label: b'0',
-            node: Node::<TestValue> {
-                prefix: "0".into(),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_00 = Edge {
-            label: b'0',
-            node: Node::<TestValue> {
-                prefix: "0".into(),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_001 = Edge {
-            label: b'1',
-            node: Node {
-                prefix: "1".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_001".into(),
-                        },
-                        key: "001".into(),
-                    })
-                    .into(),
-                ),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_002 = Edge {
-            label: b'2',
-            node: Node {
-                prefix: "2".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_002".into(),
-                        },
-                        key: "002".into(),
-                    })
-                    .into(),
-                ),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_003 = Edge {
-            label: b'3',
-            node: Node {
-                prefix: "3".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_003".into(),
-                        },
-                        key: "003".into(),
-                    })
-                    .into(),
-                ),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_010 = Edge {
-            label: b'1',
-            node: Node {
-                prefix: "10".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_010".into(),
-                        },
-                        key: "010".into(),
-                    })
-                    .into(),
-                ),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        let edge_100 = Edge {
-            label: b'1',
-            node: Node {
-                prefix: "100".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_100".into(),
-                        },
-                        key: "100".into(),
-                    })
-                    .into(),
-                ),
-                ..Default::default()
-            }
-            .into(),
-        };
-
-        edge_00.node.add_edge(edge_001);
-        edge_00.node.add_edge(edge_002);
-        edge_00.node.add_edge(edge_003);
-        edge_0.node.add_edge(edge_010);
-        edge_0.node.add_edge(edge_00);
-        root.add_edge(edge_0);
-        root.add_edge(edge_100);
+        let root = get_test_tree();
 
         {
             let result = root.longest_prefix("00123");
@@ -637,5 +527,37 @@ mod tests {
             let result = root.longest_prefix("2");
             assert_eq!(result, None);
         }
+    }
+
+    #[test]
+    fn test_minimum() {
+        let root = get_test_tree();
+
+        let result = root.minimum();
+        assert_eq!(
+            result,
+            Some((
+                "001".into(),
+                TestValue {
+                    data: "value_001".into()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_maximum() {
+        let root = get_test_tree();
+
+        let result = root.maximum();
+        assert_eq!(
+            result,
+            Some((
+                "100".into(),
+                TestValue {
+                    data: "value_100".into()
+                }
+            ))
+        );
     }
 }
