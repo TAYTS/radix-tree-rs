@@ -1,5 +1,7 @@
 #![cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::node::{Edge, LeafNode, Node};
 
     #[derive(Default, Debug, Clone, Hash, PartialEq, Eq)]
@@ -17,7 +19,7 @@ mod tests {
         };
 
         let node = Node {
-            leaf: Some(leaf.into()),
+            leaf: Some(Arc::new(leaf).into()),
             ..Default::default()
         };
         assert!(node.is_leaf(), "should return true for leaf node");
@@ -94,10 +96,10 @@ mod tests {
             label: b'a',
             node: Node {
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue { data: "new".into() },
                         key: "new_key".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -253,6 +255,7 @@ mod tests {
 
     #[test]
     fn test_get() {
+        // TODO: setup this more using Node methods
         let root: Node<TestValue> = Node::default();
         let edge_0 = Edge {
             label: b'0',
@@ -277,12 +280,12 @@ mod tests {
             node: Node {
                 prefix: "1".into(),
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue {
                             data: "value_001".into(),
                         },
                         key: "001".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -295,12 +298,12 @@ mod tests {
             node: Node {
                 prefix: "2".into(),
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue {
                             data: "value_002".into(),
                         },
                         key: "002".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -313,12 +316,12 @@ mod tests {
             node: Node {
                 prefix: "3".into(),
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue {
                             data: "value_003".into(),
                         },
                         key: "003".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -331,12 +334,12 @@ mod tests {
             node: Node {
                 prefix: "10".into(),
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue {
                             data: "value_010".into(),
                         },
                         key: "010".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -349,12 +352,12 @@ mod tests {
             node: Node {
                 prefix: "100".into(),
                 leaf: Some(
-                    LeafNode {
+                    Arc::new(LeafNode {
                         value: TestValue {
                             data: "value_100".into(),
                         },
                         key: "100".into(),
-                    }
+                    })
                     .into(),
                 ),
                 ..Default::default()
@@ -432,6 +435,206 @@ mod tests {
 
         {
             let result = root.get("0");
+            assert_eq!(result, None);
+        }
+    }
+
+    #[test]
+    fn test_longest_prefix() {
+        let root: Node<TestValue> = Node::default();
+        let edge_0 = Edge {
+            label: b'0',
+            node: Node::<TestValue> {
+                prefix: "0".into(),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_00 = Edge {
+            label: b'0',
+            node: Node::<TestValue> {
+                prefix: "0".into(),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_001 = Edge {
+            label: b'1',
+            node: Node {
+                prefix: "1".into(),
+                leaf: Some(
+                    Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "value_001".into(),
+                        },
+                        key: "001".into(),
+                    })
+                    .into(),
+                ),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_002 = Edge {
+            label: b'2',
+            node: Node {
+                prefix: "2".into(),
+                leaf: Some(
+                    Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "value_002".into(),
+                        },
+                        key: "002".into(),
+                    })
+                    .into(),
+                ),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_003 = Edge {
+            label: b'3',
+            node: Node {
+                prefix: "3".into(),
+                leaf: Some(
+                    Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "value_003".into(),
+                        },
+                        key: "003".into(),
+                    })
+                    .into(),
+                ),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_010 = Edge {
+            label: b'1',
+            node: Node {
+                prefix: "10".into(),
+                leaf: Some(
+                    Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "value_010".into(),
+                        },
+                        key: "010".into(),
+                    })
+                    .into(),
+                ),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        let edge_100 = Edge {
+            label: b'1',
+            node: Node {
+                prefix: "100".into(),
+                leaf: Some(
+                    Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "value_100".into(),
+                        },
+                        key: "100".into(),
+                    })
+                    .into(),
+                ),
+                ..Default::default()
+            }
+            .into(),
+        };
+
+        edge_00.node.add_edge(edge_001);
+        edge_00.node.add_edge(edge_002);
+        edge_00.node.add_edge(edge_003);
+        edge_0.node.add_edge(edge_010);
+        edge_0.node.add_edge(edge_00);
+        root.add_edge(edge_0);
+        root.add_edge(edge_100);
+
+        {
+            let result = root.longest_prefix("00123");
+            assert_eq!(
+                result,
+                Some((
+                    "001".into(),
+                    TestValue {
+                        data: "value_001".into()
+                    }
+                ))
+            );
+        }
+
+        {
+            let result = root.longest_prefix("003");
+            assert_eq!(
+                result,
+                Some((
+                    "003".into(),
+                    TestValue {
+                        data: "value_003".into()
+                    }
+                ))
+            );
+        }
+
+        {
+            let result = root.longest_prefix("10099");
+            assert_eq!(
+                result,
+                Some((
+                    "100".into(),
+                    TestValue {
+                        data: "value_100".into()
+                    }
+                ))
+            );
+        }
+
+        {
+            let result = root.longest_prefix("002abc");
+            assert_eq!(
+                result,
+                Some((
+                    "002".into(),
+                    TestValue {
+                        data: "value_002".into()
+                    }
+                ))
+            );
+        }
+
+        {
+            let result = root.longest_prefix("010abc");
+            assert_eq!(
+                result,
+                Some((
+                    "010".into(),
+                    TestValue {
+                        data: "value_010".into()
+                    }
+                ))
+            );
+        }
+
+        {
+            let result = root.longest_prefix("011abc");
+            assert_eq!(result, None);
+        }
+
+        {
+            let result = root.longest_prefix("0");
+            assert_eq!(result, None);
+        }
+
+        {
+            let result = root.longest_prefix("2");
             assert_eq!(result, None);
         }
     }

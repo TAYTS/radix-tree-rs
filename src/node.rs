@@ -133,7 +133,7 @@ where
     prefix: String,
 
     // used to store possible leaf
-    leaf: Option<RwLock<LeafNode<T>>>,
+    leaf: Option<RwLock<Arc<LeafNode<T>>>>,
 
     // edges to child nodes
     edges: Edges<T>,
@@ -201,9 +201,9 @@ impl<T: NodeValue> Node<T> {
         self.edges.delete_edge(label);
     }
 
-    /// get returns the value associated with the given label if exists
-    pub fn get(&self, label: &str) -> Option<T> {
-        let mut search_bytes = label.as_bytes();
+    /// get returns the value associated with the given key if exists
+    pub fn get(&self, key: &str) -> Option<T> {
+        let mut search_bytes = key.as_bytes();
         let mut current_node: Option<Arc<Node<T>>> = None;
 
         loop {
@@ -237,33 +237,48 @@ impl<T: NodeValue> Node<T> {
         None
     }
 
-    // pub fn longest_prefix(&self, key: &str) -> Option<(&str, T)> {
-    //     let mut last: Option<&LeafNode<T>> = None;
-    //     let mut search = key;
-    //     loop {
-    //         if self.is_leaf() {
-    //             last = self.leaf.as_ref().map(|l| l.as_ref())
-    //         }
+    /// longest_prefix returns the key and value with the longest prefix match for the given key
+    pub fn longest_prefix(&self, key: &str) -> Option<(String, T)> {
+        let mut last: Option<Arc<LeafNode<T>>> = None;
+        let mut search_bytes = key.as_bytes();
+        let mut current_node: Option<Arc<Node<T>>> = None;
 
-    //         if search.is_empty() {
-    //             break;
-    //         }
+        loop {
+            let node = match current_node.as_ref() {
+                Some(n) => n,
+                None => self,
+            };
 
-    //         if self.get_edge(search.as_bytes()[0]).is_none() {
-    //             break;
-    //         }
+            if node.is_leaf() {
+                last.replace(node.leaf.as_ref().unwrap().read().clone());
+            }
 
-    //         if search.starts_with(self.prefix.as_str()) {
-    //             search = &search[self.prefix.len()..];
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     if last.is_some() {
-    //         return Some((last.unwrap().key.as_str(), last.unwrap().value.clone()));
-    //     }
-    //     None
-    // }
+            if search_bytes.is_empty() {
+                break;
+            }
+
+            let node = match node.get_edge(search_bytes[0]) {
+                Some((_, n)) => {
+                    current_node.replace(n.clone());
+                    n
+                }
+                None => break,
+            };
+
+            if search_bytes.starts_with(node.prefix.as_str().as_bytes()) {
+                search_bytes = &search_bytes[node.prefix.len()..];
+            } else {
+                break;
+            }
+        }
+
+        match last {
+            // TODO: need to optimise to return &str instead of String
+            // consider using [FastStr]
+            Some(leaf) => Some((leaf.key.clone(), leaf.value.clone())),
+            None => None,
+        }
+    }
 
     // pub fn minimum(&self) -> Option<(&str, T)> {
     //     let mut current = self;
