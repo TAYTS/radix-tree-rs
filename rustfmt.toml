@@ -1,0 +1,5 @@
+indent_style =  "Block"
+indent_size = 4
+reorder_imports = true
+reorder_impl_items = true
+group_imports =  "StdExternalCrate" 
