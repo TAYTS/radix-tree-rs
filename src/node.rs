@@ -155,20 +155,20 @@ where
     // TODO: optimise this with Vec<u8>
 
     // prefix to reach this node
-    prefix: String,
+    pub(crate) prefix: String,
 
     // used to store possible leaf
-    leaf: Option<RwLock<Arc<LeafNode<T>>>>,
+    pub(crate) leaf: RwLock<Option<Arc<LeafNode<T>>>>,
 
     // edges to child nodes
-    edges: Edges<T>,
+    pub(crate) edges: Edges<T>,
 }
 
 impl<T: NodeValue> Clone for Node<T> {
     fn clone(&self) -> Self {
         Self {
             prefix: self.prefix.clone(),
-            leaf: self.leaf.as_ref().map(|l| RwLock::new(l.read().clone())),
+            leaf: RwLock::new(self.leaf.read().clone()),
             edges: self.edges.clone(),
         }
     }
@@ -183,9 +183,13 @@ impl<T: NodeValue> Hash for Node<T> {
 impl<T: NodeValue> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
         if self.prefix == other.prefix && self.edges == other.edges {
-            if let (Some(l1), Some(l2)) = (&self.leaf, &other.leaf) {
-                return l1.read().eq(&l2.read());
-            } else if self.leaf.is_none() && other.leaf.is_none() {
+            let l1 = self.leaf.read();
+            let l1 = l1.as_ref();
+            let l2 = other.leaf.read();
+            let l2 = l2.as_ref();
+            if let (Some(l1), Some(l2)) = (l1, l2) {
+                return l1.eq(l2);
+            } else if l1.is_none() && l2.is_none() {
                 return true;
             }
         }
@@ -200,14 +204,22 @@ impl<T: NodeValue> Node<T> {
     pub(crate) fn new(prefix: &str, leaf: Option<LeafNode<T>>) -> Self {
         Self {
             prefix: prefix.to_string(),
-            leaf: leaf.map(|l| RwLock::new(Arc::new(l))),
+            leaf: RwLock::new(leaf.map(|l| Arc::new(l))),
             ..Default::default()
         }
     }
 
-    /// is_leaf returns true if the node is a leaf node
+    /// is_leaf returns true if the node is a leaf node.
+    /// This should only be used internally as a Node is immutable from outside.
     pub(crate) fn is_leaf(&self) -> bool {
-        self.leaf.is_some()
+        self.leaf.read().is_some()
+    }
+
+    /// replace_leaf replaces the leaf node
+    pub(crate) fn replace_leaf(&self, leaf: Option<LeafNode<T>>) {
+        let mut write_guard = self.leaf.write();
+        let leaf_node = leaf.map(|l| Arc::new(l));
+        *write_guard = leaf_node;
     }
 
     /// add_edge adds an edge to the node
@@ -248,7 +260,7 @@ impl<T: NodeValue> Node<T> {
 
             if search_bytes.is_empty() {
                 if node.is_leaf() {
-                    let value = node.leaf.as_ref().unwrap().read().value.clone();
+                    let value = node.leaf.read().as_ref().unwrap().value.clone();
                     return Some(value);
                 }
                 break;
@@ -284,7 +296,7 @@ impl<T: NodeValue> Node<T> {
             };
 
             if node.is_leaf() {
-                last.replace(node.leaf.as_ref().unwrap().read().clone());
+                last.replace(node.leaf.read().as_ref().unwrap().clone());
             }
 
             if search_bytes.is_empty() {
@@ -324,7 +336,8 @@ impl<T: NodeValue> Node<T> {
             };
 
             if node.is_leaf() {
-                let leaf_node = node.leaf.as_ref().unwrap().read();
+                let leaf_node = node.leaf.read();
+                let leaf_node = leaf_node.as_ref().unwrap();
                 return Some((leaf_node.key.clone(), leaf_node.value.clone()));
             }
 
@@ -353,7 +366,8 @@ impl<T: NodeValue> Node<T> {
             }
 
             if node.is_leaf() {
-                let leaf_node = node.leaf.as_ref().unwrap().read();
+                let leaf_node = node.leaf.read();
+                let leaf_node = leaf_node.as_ref().unwrap();
                 return Some((leaf_node.key.clone(), leaf_node.value.clone()));
             } else {
                 break;

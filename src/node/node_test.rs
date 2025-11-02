@@ -2,6 +2,8 @@
 mod tests {
     use std::sync::Arc;
 
+    use parking_lot::lock_api::RwLock;
+
     use crate::node::{Edge, LeafNode, Node};
 
     #[derive(Default, Debug, Clone, Hash, PartialEq, Eq)]
@@ -21,8 +23,9 @@ mod tests {
 
             let node = Node::new("prefix", Some(leaf_node.clone()));
             assert_eq!(node.prefix, "prefix");
-            assert!(node.leaf.is_some());
-            let stored_leaf = node.leaf.as_ref().unwrap().read();
+            assert!(node.leaf.read().is_some());
+            let stored_leaf = node.leaf.read();
+            let stored_leaf = stored_leaf.as_ref().unwrap();
             assert_eq!(stored_leaf.key, leaf_node.key);
             assert_eq!(stored_leaf.value, leaf_node.value);
         }
@@ -30,13 +33,13 @@ mod tests {
         {
             let node_no_leaf: Node<TestValue> = Node::new("no_leaf", None);
             assert_eq!(node_no_leaf.prefix, "no_leaf");
-            assert!(node_no_leaf.leaf.is_none());
+            assert!(node_no_leaf.leaf.read().is_none());
         }
 
         {
             let blank_node: Node<TestValue> = Node::new("", None);
             assert_eq!(blank_node.prefix, "");
-            assert!(blank_node.leaf.is_none());
+            assert!(blank_node.leaf.read().is_none());
         }
     }
 
@@ -50,13 +53,46 @@ mod tests {
         };
 
         let node = Node {
-            leaf: Some(Arc::new(leaf).into()),
+            leaf: RwLock::new(Some(Arc::new(leaf))),
             ..Default::default()
         };
         assert!(node.is_leaf(), "should return true for leaf node");
 
         let node: Node<TestValue> = Node::default();
         assert!(!node.is_leaf(), "should return false for non-leaf node");
+    }
+
+    #[test]
+    fn test_replace_leaf() {
+        let node: Node<TestValue> = Node::default();
+
+        // replace with a new leaf
+        let new_leaf = LeafNode {
+            value: TestValue {
+                data: "new_data".into(),
+            },
+            key: "new_key".into(),
+        };
+        node.replace_leaf(Some(new_leaf.clone()));
+
+        {
+            let stored_leaf = node.leaf.read();
+            assert!(
+                stored_leaf.is_some(),
+                "leaf should be present after replacement"
+            );
+            let stored_leaf = stored_leaf.as_ref().unwrap();
+            assert_eq!(stored_leaf.key, new_leaf.key);
+            assert_eq!(stored_leaf.value, new_leaf.value);
+        }
+
+        // replace with None (remove leaf)
+        node.replace_leaf(None);
+
+        {
+            let stored_leaf = node.leaf.read();
+            assert!(stored_leaf.is_none(), "leaf should be None after removal");
+        }
     }
 
     #[test]
@@ -126,13 +162,10 @@ mod tests {
         let new_edge_a = Edge {
             label: b'a',
             node: Node {
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue { data: "new".into() },
-                        key: "new_key".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue { data: "new".into() },
+                    key: "new_key".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
@@ -308,15 +341,12 @@ mod tests {
             label: b'1',
             node: Node {
                 prefix: "1".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_001".into(),
-                        },
-                        key: "001".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value_001".into(),
+                    },
+                    key: "001".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
@@ -326,15 +356,12 @@ mod tests {
             label: b'2',
             node: Node {
                 prefix: "2".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_002".into(),
-                        },
-                        key: "002".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value_002".into(),
+                    },
+                    key: "002".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
@@ -344,15 +371,12 @@ mod tests {
             label: b'3',
             node: Node {
                 prefix: "3".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_003".into(),
-                        },
-                        key: "003".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value_003".into(),
+                    },
+                    key: "003".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
@@ -362,15 +386,12 @@ mod tests {
             label: b'1',
             node: Node {
                 prefix: "10".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_010".into(),
-                        },
-                        key: "010".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value_010".into(),
+                    },
+                    key: "010".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
@@ -380,15 +401,12 @@ mod tests {
             label: b'1',
             node: Node {
                 prefix: "100".into(),
-                leaf: Some(
-                    Arc::new(LeafNode {
-                        value: TestValue {
-                            data: "value_100".into(),
-                        },
-                        key: "100".into(),
-                    })
-                    .into(),
-                ),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value_100".into(),
+                    },
+                    key: "100".into(),
+                }))),
                 ..Default::default()
             }
             .into(),
