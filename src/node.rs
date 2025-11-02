@@ -196,6 +196,15 @@ impl<T: NodeValue> PartialEq for Node<T> {
 impl<T: NodeValue> Eq for Node<T> {}
 
 impl<T: NodeValue> Node<T> {
+    /// new creates a new node with the given prefix and optional leaf node
+    pub(crate) fn new(prefix: &str, leaf: Option<LeafNode<T>>) -> Self {
+        Self {
+            prefix: prefix.to_string(),
+            leaf: leaf.map(|l| RwLock::new(Arc::new(l))),
+            ..Default::default()
+        }
+    }
+
     /// is_leaf returns true if the node is a leaf node
     pub(crate) fn is_leaf(&self) -> bool {
         self.leaf.is_some()

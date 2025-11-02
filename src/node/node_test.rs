@@ -10,6 +10,37 @@ mod tests {
     }
 
     #[test]
+    fn new() {
+        {
+            let leaf_node = LeafNode {
+                value: TestValue {
+                    data: "test".into(),
+                },
+                key: "key".into(),
+            };
+
+            let node = Node::new("prefix", Some(leaf_node.clone()));
+            assert_eq!(node.prefix, "prefix");
+            assert!(node.leaf.is_some());
+            let stored_leaf = node.leaf.as_ref().unwrap().read();
+            assert_eq!(stored_leaf.key, leaf_node.key);
+            assert_eq!(stored_leaf.value, leaf_node.value);
+        }
+
+        {
+            let node_no_leaf: Node<TestValue> = Node::new("no_leaf", None);
+            assert_eq!(node_no_leaf.prefix, "no_leaf");
+            assert!(node_no_leaf.leaf.is_none());
+        }
+
+        {
+            let blank_node: Node<TestValue> = Node::new("", None);
+            assert_eq!(blank_node.prefix, "");
+            assert!(blank_node.leaf.is_none());
+        }
+    }
+
+    #[test]
     fn check_is_leaf() {
         let leaf = LeafNode {
             value: TestValue {
