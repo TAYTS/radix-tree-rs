@@ -176,7 +176,7 @@ where
     // TODO: add Node update signal
     // TODO: optimise this with Vec<u8>
 
-    // prefix to reach this node
+    // prefix ignored
     pub(crate) prefix: RwLock<String>,
 
     // used to store possible leaf
