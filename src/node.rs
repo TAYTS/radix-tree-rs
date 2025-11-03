@@ -75,6 +75,18 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
+    /// replace_edge_at replaces the node of the edge at the given index
+    fn replace_edge_at(&self, index: usize, edge: Edge<T>) {
+        let self_edges = self.0.read();
+        let self_edges_slice = self_edges.as_slice();
+        if index < self_edges_slice.len() && self_edges_slice[index].label == edge.label {
+            drop(self_edges); // release read lock before acquiring write lock
+            self.0.write()[index].node = edge.node;
+        } else {
+            panic!("replace edge at invalid index or label mismatch");
+        }
+    }
+
     /// get_edge return the index and node of the edge with the given label
     fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
@@ -85,6 +97,16 @@ impl<T: NodeValue> Edges<T> {
         if edge_idx < self_edges.len() && self_edges[edge_idx].label == label {
             let node = self_edges[edge_idx].node.clone();
             Some((edge_idx, node))
+        } else {
+            None
+        }
+    }
+
+    /// get_edge_at returns the node of the edge at the given index
+    fn get_edge_at(&self, index: usize) -> Option<Arc<Node<T>>> {
+        let self_edges = self.0.read();
+        if index < self_edges.len() {
+            Some(self_edges[index].node.clone())
         } else {
             None
         }
@@ -232,9 +254,19 @@ impl<T: NodeValue> Node<T> {
         self.edges.replace_edge(edge);
     }
 
+    /// replace_edge_at replaces the node of the edge at the given index
+    pub(crate) fn replace_edge_at(&self, index: usize, edge: Edge<T>) {
+        self.edges.replace_edge_at(index, edge);
+    }
+
     /// get_edge return the index and node of the edge with the given label
     pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_edge(label)
+    }
+
+    /// get_edge_at returns the node of the edge at the given index
+    pub(crate) fn get_edge_at(&self, index: usize) -> Option<Arc<Node<T>>> {
+        self.edges.get_edge_at(index)
     }
 
     /// get_lower_bound_edge returns the index and node of the lowest edge with label >= given label

@@ -180,6 +180,95 @@ mod tests {
     }
 
     #[test]
+    fn test_replace_edge_at() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_b = Edge {
+            label: b'b',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a.clone());
+        node.add_edge(edge_b.clone());
+
+        // replace edge at index 1 (edge 'b')
+        let new_edge_b = Edge {
+            label: b'b',
+            node: Node {
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "new_b".into(),
+                    },
+                    key: "new_key_b".into(),
+                }))),
+                ..Default::default()
+            }
+            .into(),
+        };
+        node.replace_edge_at(1, new_edge_b.clone());
+
+        {
+            let edges = node.edges.0.read();
+            let edges = edges.as_slice();
+            assert_eq!(edges.len(), 2);
+            assert_eq!(edges[0], edge_a, "edge 'a' should remain unchanged");
+            assert_eq!(edges[1], new_edge_b, "edge 'b' should be replaced");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "replace edge at invalid index or label mismatch")]
+    fn test_replace_edge_invalid_index() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_b = Edge {
+            label: b'b',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a);
+        node.add_edge(edge_b);
+
+        // attempt to replace edge at invalid index
+        node.replace_edge_at(
+            5,
+            Edge {
+                label: b'c',
+                node: Node::default().into(),
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "replace edge at invalid index or label mismatch")]
+    fn test_replace_edge_with_invalid_label() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_b = Edge {
+            label: b'b',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a);
+        node.add_edge(edge_b);
+
+        // attempt to replace edge with invalid label
+        node.replace_edge_at(
+            1,
+            Edge {
+                label: b'c',
+                node: Node::default().into(),
+            },
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "replace missing edge")]
     fn test_replace_missing_edge() {
         let node: Node<TestValue> = Node::default();
@@ -234,6 +323,49 @@ mod tests {
         // get non-existent edge 'c'
         let result = node.get_edge(b'c');
         assert!(result.is_none(), "should not find edge 'c'");
+    }
+
+    #[test]
+    fn test_get_edge_at() {
+        let node: Node<TestValue> = Node::default();
+        let edge_a = Edge {
+            label: b'a',
+            node: Node::default().into(),
+        };
+        let edge_b = Edge {
+            label: b'b',
+            node: Node::default().into(),
+        };
+        node.add_edge(edge_a.clone());
+        node.add_edge(edge_b.clone());
+
+        {
+            // get edge at index 0
+            let result = node.get_edge_at(0);
+            assert!(result.is_some(), "should find edge at index 0");
+            let found_node = result.unwrap();
+            assert_eq!(
+                *found_node, *edge_a.node,
+                "found node at index 0 should match edge 'a'"
+            );
+        }
+
+        {
+            // get edge at index 1
+            let result = node.get_edge_at(1);
+            assert!(result.is_some(), "should find edge at index 1");
+            let found_node = result.unwrap();
+            assert_eq!(
+                *found_node, *edge_b.node,
+                "found node at index 1 should match edge 'b'"
+            );
+        }
+
+        {
+            // get edge at invalid index 2
+            let result = node.get_edge_at(2);
+            assert!(result.is_none(), "should not find edge at index 2");
+        }
     }
 
     #[test]
