@@ -177,7 +177,7 @@ where
     // TODO: optimise this with Vec<u8>
 
     // prefix to reach this node
-    pub(crate) prefix: String,
+    pub(crate) prefix: RwLock<String>,
 
     // used to store possible leaf
     pub(crate) leaf: RwLock<Option<Arc<LeafNode<T>>>>,
@@ -189,7 +189,7 @@ where
 impl<T: NodeValue> Clone for Node<T> {
     fn clone(&self) -> Self {
         Self {
-            prefix: self.prefix.clone(),
+            prefix: RwLock::new(self.prefix.read().clone()),
             leaf: RwLock::new(self.leaf.read().clone()),
             edges: self.edges.clone(),
         }
@@ -198,13 +198,14 @@ impl<T: NodeValue> Clone for Node<T> {
 
 impl<T: NodeValue> Hash for Node<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.prefix.hash(state);
+        self.prefix.read().hash(state);
     }
 }
 
 impl<T: NodeValue> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.prefix == other.prefix && self.edges == other.edges {
+        if self.prefix.read().as_str() == other.prefix.read().as_str() && self.edges == other.edges
+        {
             let l1 = self.leaf.read();
             let l1 = l1.as_ref();
             let l2 = other.leaf.read();
@@ -225,7 +226,7 @@ impl<T: NodeValue> Node<T> {
     /// new creates a new node with the given prefix and optional leaf node
     pub(crate) fn new(prefix: &str, leaf: Option<LeafNode<T>>) -> Self {
         Self {
-            prefix: prefix.to_string(),
+            prefix: RwLock::new(prefix.to_string()),
             leaf: RwLock::new(leaf.map(|l| Arc::new(l))),
             ..Default::default()
         }
@@ -235,6 +236,13 @@ impl<T: NodeValue> Node<T> {
     /// This should only be used internally as a Node is immutable from outside.
     pub(crate) fn is_leaf(&self) -> bool {
         self.leaf.read().is_some()
+    }
+
+    /// replace_prefix replaces the prefix of the node
+    /// warning: this is only for internal use during transaction processing
+    pub(crate) fn replace_prefix(&self, prefix: &str) {
+        let mut write_guard = self.prefix.write();
+        *write_guard = prefix.to_string();
     }
 
     /// replace_leaf replaces the leaf node
@@ -306,8 +314,8 @@ impl<T: NodeValue> Node<T> {
                 None => break,
             };
 
-            if search_bytes.starts_with(node.prefix.as_str().as_bytes()) {
-                search_bytes = &search_bytes[node.prefix.len()..];
+            if search_bytes.starts_with(node.prefix.read().as_str().as_bytes()) {
+                search_bytes = &search_bytes[node.prefix.read().len()..];
             } else {
                 break;
             }
@@ -343,8 +351,8 @@ impl<T: NodeValue> Node<T> {
                 None => break,
             };
 
-            if search_bytes.starts_with(node.prefix.as_str().as_bytes()) {
-                search_bytes = &search_bytes[node.prefix.len()..];
+            if search_bytes.starts_with(node.prefix.read().as_str().as_bytes()) {
+                search_bytes = &search_bytes[node.prefix.read().len()..];
             } else {
                 break;
             }

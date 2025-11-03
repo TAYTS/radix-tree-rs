@@ -22,7 +22,7 @@ mod tests {
             };
 
             let node = Node::new("prefix", Some(leaf_node.clone()));
-            assert_eq!(node.prefix, "prefix");
+            assert_eq!(node.prefix.read().as_str(), "prefix");
             assert!(node.leaf.read().is_some());
             let stored_leaf = node.leaf.read();
             let stored_leaf = stored_leaf.as_ref().unwrap();
@@ -32,13 +32,13 @@ mod tests {
 
         {
             let node_no_leaf: Node<TestValue> = Node::new("no_leaf", None);
-            assert_eq!(node_no_leaf.prefix, "no_leaf");
+            assert_eq!(node_no_leaf.prefix.read().as_str(), "no_leaf");
             assert!(node_no_leaf.leaf.read().is_none());
         }
 
         {
             let blank_node: Node<TestValue> = Node::new("", None);
-            assert_eq!(blank_node.prefix, "");
+            assert_eq!(blank_node.prefix.read().as_str(), "");
             assert!(blank_node.leaf.read().is_none());
         }
     }
@@ -60,6 +60,18 @@ mod tests {
 
         let node: Node<TestValue> = Node::default();
         assert!(!node.is_leaf(), "should return false for non-leaf node");
+    }
+
+    #[test]
+    fn test_replace_prefix() {
+        let node: Node<TestValue> = Node::new("old_prefix", None);
+        assert_eq!(node.prefix.read().as_str(), "old_prefix");
+
+        node.replace_prefix("new_prefix");
+        assert_eq!(node.prefix.read().as_str(), "new_prefix");
+
+        node.replace_prefix("");
+        assert_eq!(node.prefix.read().as_str(), "");
     }
 
     #[test]
@@ -454,7 +466,7 @@ mod tests {
         let edge_0 = Edge {
             label: b'0',
             node: Node::<TestValue> {
-                prefix: "0".into(),
+                prefix: RwLock::new("0".into()),
                 ..Default::default()
             }
             .into(),
@@ -463,7 +475,7 @@ mod tests {
         let edge_00 = Edge {
             label: b'0',
             node: Node::<TestValue> {
-                prefix: "0".into(),
+                prefix: RwLock::new("0".into()),
                 ..Default::default()
             }
             .into(),
@@ -472,7 +484,7 @@ mod tests {
         let edge_001 = Edge {
             label: b'1',
             node: Node {
-                prefix: "1".into(),
+                prefix: RwLock::new("1".into()),
                 leaf: RwLock::new(Some(Arc::new(LeafNode {
                     value: TestValue {
                         data: "value_001".into(),
@@ -487,7 +499,7 @@ mod tests {
         let edge_002 = Edge {
             label: b'2',
             node: Node {
-                prefix: "2".into(),
+                prefix: RwLock::new("2".into()),
                 leaf: RwLock::new(Some(Arc::new(LeafNode {
                     value: TestValue {
                         data: "value_002".into(),
@@ -502,7 +514,7 @@ mod tests {
         let edge_003 = Edge {
             label: b'3',
             node: Node {
-                prefix: "3".into(),
+                prefix: RwLock::new("3".into()),
                 leaf: RwLock::new(Some(Arc::new(LeafNode {
                     value: TestValue {
                         data: "value_003".into(),
@@ -517,7 +529,7 @@ mod tests {
         let edge_010 = Edge {
             label: b'1',
             node: Node {
-                prefix: "10".into(),
+                prefix: RwLock::new("10".into()),
                 leaf: RwLock::new(Some(Arc::new(LeafNode {
                     value: TestValue {
                         data: "value_010".into(),
@@ -532,7 +544,7 @@ mod tests {
         let edge_100 = Edge {
             label: b'1',
             node: Node {
-                prefix: "100".into(),
+                prefix: RwLock::new("100".into()),
                 leaf: RwLock::new(Some(Arc::new(LeafNode {
                     value: TestValue {
                         data: "value_100".into(),
