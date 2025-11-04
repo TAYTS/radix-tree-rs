@@ -22,13 +22,14 @@ where
     T: NodeValue,
 {
     // root is the modified root node of the tree
-    root: RwLock<Arc<Node<T>>>,
+    // TODO: maybe don't need RwLock here
+    pub root: RwLock<Arc<Node<T>>>,
 
     // size tracks the size of tree as it is modified during the transaction
-    size: AtomicU32,
+    pub size: AtomicU32,
 
     // writable is a cache of nodes created during the transaction.
-    writable: Option<LruCache<Arc<Node<T>>, ()>>,
+    pub writable: Option<LruCache<Arc<Node<T>>, ()>>,
 }
 
 impl<T: NodeValue> Txn<T> {
@@ -187,10 +188,420 @@ impl<T: NodeValue> Txn<T> {
             *root_guard = node;
         }
 
-        if old_value.is_some() {
+        if old_value.is_none() {
             // TODO: revisit the memory ordering here
             self.size.fetch_add(1, atomic::Ordering::Relaxed);
         }
         old_value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_txn_insert() {
+        let mut txn: Txn<u32> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        {
+            let result = txn.insert("001", 1);
+            assert!(result.is_none());
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 1);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge = root.get_edge(b'0');
+            assert!(edge.is_some());
+            let (_, child_node) = edge.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("001".to_string()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        key: "001".to_string(),
+                        value: 1,
+                    }))),
+                    ..Default::default()
+                }
+            );
+        }
+
+        {
+            // insert another key with common prefix "00" should split the node
+            let result = txn.insert("002", 2);
+            assert!(result.is_none());
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 2);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge = root.get_edge(b'0');
+            assert!(edge.is_some());
+            let (_, child_node) = edge.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("00".to_string()),
+                    leaf: RwLock::new(None),
+                    edges: vec![
+                        Edge {
+                            label: b'1',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("1".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "001".to_string(),
+                                    value: 1,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                        Edge {
+                            label: b'2',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("2".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "002".to_string(),
+                                    value: 2,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                    ]
+                    .into(),
+                }
+            );
+        }
+
+        {
+            // insert another key with common prefix "00", should append to the edges
+            let result = txn.insert("003", 3);
+            assert!(result.is_none());
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 3);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge = root.get_edge(b'0');
+            assert!(edge.is_some());
+            let (_, child_node) = edge.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("00".to_string()),
+                    leaf: RwLock::new(None),
+                    edges: vec![
+                        Edge {
+                            label: b'1',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("1".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "001".to_string(),
+                                    value: 1,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                        Edge {
+                            label: b'2',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("2".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "002".to_string(),
+                                    value: 2,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                        Edge {
+                            label: b'3',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("3".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "003".to_string(),
+                                    value: 3,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                    ]
+                    .into(),
+                }
+            );
+        }
+
+        {
+            // insert another key with shorter common prefix "0", should split the node again
+            let result = txn.insert("010", 10);
+            assert!(result.is_none());
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 4);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge = root.get_edge(b'0');
+            assert!(edge.is_some());
+            let (_, child_node) = edge.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("0".to_string()),
+                    leaf: RwLock::new(None),
+                    edges: vec![
+                        Edge {
+                            label: b'0',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("0".to_string()),
+                                leaf: RwLock::new(None),
+                                edges: vec![
+                                    Edge {
+                                        label: b'1',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("1".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "001".to_string(),
+                                                value: 1,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'2',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("2".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "002".to_string(),
+                                                value: 2,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'3',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("3".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "003".to_string(),
+                                                value: 3,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    }
+                                ]
+                                .into(),
+                            }),
+                        },
+                        Edge {
+                            label: b'1',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("10".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "010".to_string(),
+                                    value: 10,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                    ]
+                    .into(),
+                }
+            );
+        }
+
+        {
+            // insert another key with no common prefix, should add new edge to the root
+            let result = txn.insert("100", 100);
+            assert!(result.is_none());
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 5);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge_0 = root.get_edge(b'0');
+            assert!(edge_0.is_some());
+            let (_, child_node) = edge_0.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("0".to_string()),
+                    leaf: RwLock::new(None),
+                    edges: vec![
+                        Edge {
+                            label: b'0',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("0".to_string()),
+                                leaf: RwLock::new(None),
+                                edges: vec![
+                                    Edge {
+                                        label: b'1',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("1".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "001".to_string(),
+                                                value: 1,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'2',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("2".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "002".to_string(),
+                                                value: 2,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'3',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("3".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "003".to_string(),
+                                                value: 3,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    }
+                                ]
+                                .into(),
+                            }),
+                        },
+                        Edge {
+                            label: b'1',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("10".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "010".to_string(),
+                                    value: 10,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                    ]
+                    .into(),
+                }
+            );
+
+            let edge_1 = root.get_edge(b'1');
+            assert!(edge_1.is_some());
+            let (_, child_node) = edge_1.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("100".to_string()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        key: "100".to_string(),
+                        value: 100,
+                    }))),
+                    ..Default::default()
+                }
+            );
+        }
+
+        {
+            // update existing child node value
+            let result = txn.insert("002", 20);
+            assert!(result.is_some());
+            assert_eq!(result.unwrap(), 2);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 5);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge_0 = root.get_edge(b'0');
+            assert!(edge_0.is_some());
+            let (_, child_node) = edge_0.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("0".to_string()),
+                    leaf: RwLock::new(None),
+                    edges: vec![
+                        Edge {
+                            label: b'0',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("0".to_string()),
+                                leaf: RwLock::new(None),
+                                edges: vec![
+                                    Edge {
+                                        label: b'1',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("1".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "001".to_string(),
+                                                value: 1,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'2',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("2".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "002".to_string(),
+                                                value: 20,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    },
+                                    Edge {
+                                        label: b'3',
+                                        node: Arc::new(Node {
+                                            prefix: RwLock::new("3".to_string()),
+                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                                key: "003".to_string(),
+                                                value: 3,
+                                            }))),
+                                            ..Default::default()
+                                        }),
+                                    }
+                                ]
+                                .into(),
+                            }),
+                        },
+                        Edge {
+                            label: b'1',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("10".to_string()),
+                                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                                    key: "010".to_string(),
+                                    value: 10,
+                                }))),
+                                ..Default::default()
+                            }),
+                        },
+                    ]
+                    .into(),
+                }
+            );
+        }
+
+        {
+            // update top level node value
+            let result = txn.insert("100", 200);
+            assert!(result.is_some());
+            assert_eq!(result.unwrap(), 100);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), 5);
+            let root = txn.root.read();
+            assert_eq!(root.prefix.read().as_str(), "");
+
+            let edge_1 = root.get_edge(b'1');
+            assert!(edge_1.is_some());
+            let (_, child_node) = edge_1.unwrap();
+            assert_eq!(
+                *child_node,
+                Node {
+                    prefix: RwLock::new("100".to_string()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        key: "100".to_string(),
+                        value: 200,
+                    }))),
+                    ..Default::default()
+                }
+            );
+        }
     }
 }
