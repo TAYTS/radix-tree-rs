@@ -13,6 +13,7 @@ where
     T: NodeValue,
 {
     pub(crate) label: u8,
+    // TODO: re-check if we need deep clone here
     pub(crate) node: Arc<Node<T>>,
 }
 
@@ -24,7 +25,7 @@ impl<T: NodeValue> PartialOrd for Edge<T> {
 
 impl<T: NodeValue> PartialEq for Edge<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.label == other.label
+        self.label == other.label && self.node == other.node
     }
 }
 
@@ -48,6 +49,12 @@ impl<T: NodeValue> Hash for Edges<T> {
 impl<T: NodeValue> PartialEq for Edges<T> {
     fn eq(&self, other: &Self) -> bool {
         self.0.read().as_slice().eq(other.0.read().as_slice())
+    }
+}
+
+impl<T: NodeValue> From<Vec<Edge<T>>> for Edges<T> {
+    fn from(vec: Vec<Edge<T>>) -> Self {
+        Self(RwLock::new(vec))
     }
 }
 
@@ -206,19 +213,13 @@ impl<T: NodeValue> Hash for Node<T> {
 
 impl<T: NodeValue> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.prefix.read().as_str() == other.prefix.read().as_str() && self.edges == other.edges
-        {
-            let l1 = self.leaf.read();
-            let l1 = l1.as_ref();
-            let l2 = other.leaf.read();
-            let l2 = l2.as_ref();
-            if let (Some(l1), Some(l2)) = (l1, l2) {
-                return l1.eq(l2);
-            } else if l1.is_none() && l2.is_none() {
-                return true;
-            }
+        if self.prefix.read().as_str() != other.prefix.read().as_str() {
+            return false;
         }
-        false
+        if self.leaf.read().as_ref() != other.leaf.read().as_ref() {
+            return false;
+        }
+        return self.edges == other.edges;
     }
 }
 

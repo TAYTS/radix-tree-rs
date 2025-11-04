@@ -12,6 +12,397 @@ mod tests {
     }
 
     #[test]
+    fn test_node_equality() {
+        let base_node: Node<TestValue> = Node {
+            prefix: RwLock::new("prefix".into()),
+            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                value: TestValue {
+                    data: "value".into(),
+                },
+                key: "key".into(),
+            }))),
+            edges: vec![Edge {
+                label: b'a',
+                node: Arc::new(Node {
+                    prefix: RwLock::new("a".into()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "a_value".into(),
+                        },
+                        key: "a_key".into(),
+                    }))),
+                    edges: vec![Edge {
+                        label: b'b',
+                        node: Arc::new(Node {
+                            prefix: RwLock::new("ab".into()),
+                            ..Default::default()
+                        }),
+                    }]
+                    .into(),
+                }),
+            }]
+            .into(),
+        };
+
+        {
+            let node_eq: Node<TestValue> = Node {
+                prefix: RwLock::new("prefix".into()),
+                leaf: RwLock::new(Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value".into(),
+                    },
+                    key: "key".into(),
+                }))),
+                edges: vec![Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "a_value".into(),
+                            },
+                            key: "a_key".into(),
+                        }))),
+                        edges: vec![Edge {
+                            label: b'b',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("ab".into()),
+                                ..Default::default()
+                            }),
+                        }]
+                        .into(),
+                    }),
+                }]
+                .into(),
+            };
+
+            assert_eq!(
+                base_node, node_eq,
+                "Nodes with identical data should be equal"
+            );
+        }
+
+        {
+            let node_prefix_diff = base_node.clone();
+            {
+                let mut write_guard = node_prefix_diff.prefix.write();
+                *write_guard = "diff".into();
+            }
+
+            assert_ne!(
+                base_node, node_prefix_diff,
+                "Nodes with different prefixes should not be equal"
+            );
+        }
+
+        {
+            let node_leaf_diff_key = base_node.clone();
+
+            {
+                let mut write_guard = node_leaf_diff_key.leaf.write();
+                *write_guard = Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value".into(),
+                    },
+                    key: "key1".into(),
+                }));
+            }
+
+            assert_ne!(
+                base_node, node_leaf_diff_key,
+                "Nodes with different leaf keys should not be equal"
+            );
+        }
+
+        {
+            let node_leaf_diff_value = base_node.clone();
+            {
+                let mut write_guard = node_leaf_diff_value.leaf.write();
+                *write_guard = Some(Arc::new(LeafNode {
+                    value: TestValue {
+                        data: "value1".into(),
+                    },
+                    key: "key".into(),
+                }));
+            }
+
+            assert_ne!(
+                base_node, node_leaf_diff_value,
+                "Nodes with different leaf values should not be equal"
+            );
+        }
+
+        {
+            let node_missing_leaf = base_node.clone();
+            {
+                let mut write_guard = node_missing_leaf.leaf.write();
+                *write_guard = None;
+            }
+
+            assert_ne!(
+                base_node, node_missing_leaf,
+                "Nodes with one missing leaf should not be equal"
+            );
+        }
+
+        {
+            let node_with_different_edge_node_prefix = base_node.clone();
+            {
+                let mut write_guard = node_with_different_edge_node_prefix.edges.0.write();
+                write_guard[0] = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("different".into()),
+                        ..Default::default()
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_different_edge_node_prefix,
+                "Nodes with different edge node prefixes should not be equal"
+            );
+        }
+
+        {
+            let node_with_different_edge_label = base_node.clone();
+            {
+                let mut write_guard = node_with_different_edge_label.edges.0.write();
+                write_guard[0] = Edge {
+                    label: b'b',
+                    node: write_guard[0].node.clone(),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_different_edge_label,
+                "Nodes with different edge labels should not be equal"
+            );
+        }
+
+        {
+            let node_with_missing_edge = base_node.clone();
+            {
+                let mut write_guard = node_with_missing_edge.edges.0.write();
+                write_guard.clear();
+            }
+
+            assert_ne!(
+                base_node, node_with_missing_edge,
+                "Nodes with missing edges should not be equal"
+            );
+        }
+
+        {
+            let node_with_additional_edge = base_node.clone();
+            {
+                let mut write_guard = node_with_additional_edge.edges.0.write();
+                write_guard.push(Edge {
+                    label: b'c',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("c".into()),
+                        ..Default::default()
+                    }),
+                });
+            }
+            assert_ne!(
+                base_node, node_with_additional_edge,
+                "Nodes with additional edges should not be equal"
+            );
+        }
+
+        {
+            let node_with_different_edge_node_prefix = base_node.clone();
+            {
+                let mut write_guard = node_with_different_edge_node_prefix.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("different".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "a_value".into(),
+                            },
+                            key: "a_key".into(),
+                        }))),
+                        edges: vec![Edge {
+                            label: b'b',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("ab".into()),
+                                ..Default::default()
+                            }),
+                        }]
+                        .into(),
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_different_edge_node_prefix,
+                "Nodes with different edge node prefixes should not be equal"
+            );
+        }
+
+        {
+            let node_with_different_edge_node_leaf_key = base_node.clone();
+            {
+                let mut write_guard = node_with_different_edge_node_leaf_key.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "a_value".into(),
+                            },
+                            key: "different_key".into(),
+                        }))),
+                        edges: vec![Edge {
+                            label: b'b',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("ab".into()),
+                                ..Default::default()
+                            }),
+                        }]
+                        .into(),
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_different_edge_node_leaf_key,
+                "Nodes with different edge node leaf keys should not be equal"
+            );
+        }
+
+        {
+            let node_with_different_edge_node_leaf_value = base_node.clone();
+            {
+                let mut write_guard = node_with_different_edge_node_leaf_value.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "different".into(),
+                            },
+                            key: "a_key".into(),
+                        }))),
+                        edges: vec![Edge {
+                            label: b'b',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("ab".into()),
+                                ..Default::default()
+                            }),
+                        }]
+                        .into(),
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_different_edge_node_leaf_value,
+                "Nodes with different edge node leaf values should not be equal"
+            );
+        }
+
+        {
+            let node_with_missing_edge_node_leaf = base_node.clone();
+            {
+                let mut write_guard = node_with_missing_edge_node_leaf.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(None),
+                        edges: vec![Edge {
+                            label: b'b',
+                            node: Arc::new(Node {
+                                prefix: RwLock::new("ab".into()),
+                                ..Default::default()
+                            }),
+                        }]
+                        .into(),
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_missing_edge_node_leaf,
+                "Nodes with missing edge node leaves should not be equal"
+            );
+        }
+
+        {
+            let node_with_additional_edge_node_edge = base_node.clone();
+            {
+                let mut write_guard = node_with_additional_edge_node_edge.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "a_value".into(),
+                            },
+                            key: "a_key".into(),
+                        }))),
+                        edges: vec![
+                            Edge {
+                                label: b'b',
+                                node: Arc::new(Node {
+                                    prefix: RwLock::new("ab".into()),
+                                    ..Default::default()
+                                }),
+                            },
+                            Edge {
+                                label: b'c',
+                                node: Arc::new(Node {
+                                    prefix: RwLock::new("ac".into()),
+                                    ..Default::default()
+                                }),
+                            },
+                        ]
+                        .into(),
+                    }),
+                };
+            }
+
+            assert_ne!(
+                base_node, node_with_additional_edge_node_edge,
+                "Nodes with additional edge node edges should not be equal"
+            );
+        }
+
+        {
+            let node_with_missing_edge_node_edge = base_node.clone();
+            {
+                let mut write_guard = node_with_missing_edge_node_edge.edges.0.write();
+                let edge = &mut write_guard[0];
+                *edge = Edge {
+                    label: b'a',
+                    node: Arc::new(Node {
+                        prefix: RwLock::new("a".into()),
+                        leaf: RwLock::new(Some(Arc::new(LeafNode {
+                            value: TestValue {
+                                data: "a_value".into(),
+                            },
+                            key: "a_key".into(),
+                        }))),
+                        edges: vec![].into(),
+                    }),
+                };
+            }
+        }
+    }
+
+    #[test]
     fn new() {
         {
             let leaf_node = LeafNode {
