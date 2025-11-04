@@ -1,6 +1,8 @@
+#[cfg(test)]
+mod node_test;
+
 use std::{hash::Hash, sync::Arc};
 
-mod node_test;
 use parking_lot::RwLock;
 
 use crate::utils::NodeValue;
