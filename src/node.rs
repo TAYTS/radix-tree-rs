@@ -178,6 +178,11 @@ impl<T: NodeValue> Edges<T> {
             None
         }
     }
+
+    /// clear removes all edges
+    fn clear(&self) {
+        self.0.write().clear();
+    }
 }
 
 /// An immutable node in the radix tree, which may contains a value if it is a leaf node.
@@ -442,6 +447,11 @@ impl<T: NodeValue> Node<T> {
     /// last_edge returns the last edge's node if exists
     pub fn last_edge(&self) -> Option<Arc<Node<T>>> {
         self.edges.last()
+    }
+
+    /// clear_edge removes all edges
+    pub fn clear_edges(&self) {
+        self.edges.clear();
     }
 }
 

@@ -1214,4 +1214,33 @@ mod tests {
             assert!(last_edge_node.is_none());
         }
     }
+
+    #[test]
+    fn test_clear_edges() {
+        {
+            // node with edges
+            let root = get_test_tree();
+            assert_eq!(root.edge_len(), 2, "node should have 2 edges before clear");
+
+            root.clear_edges();
+            assert_eq!(root.edge_len(), 0, "node should have 0 edges after clear");
+        }
+
+        {
+            // empty node
+            let root = Node::<TestValue>::default();
+            assert_eq!(
+                root.edge_len(),
+                0,
+                "empty node should have 0 edges before clear"
+            );
+
+            root.clear_edges();
+            assert_eq!(
+                root.edge_len(),
+                0,
+                "empty node should have 0 edges after clear"
+            );
+        }
+    }
 }
