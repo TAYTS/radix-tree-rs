@@ -418,6 +418,21 @@ impl<T: NodeValue> Node<T> {
         }
         None
     }
+
+    /// empty_edge returns true if there are no edges
+    pub fn empty_edge(&self) -> bool {
+        self.edges.is_empty()
+    }
+
+    /// first_edge returns the first edge's node if exists
+    pub fn first_edge(&self) -> Option<Arc<Node<T>>> {
+        self.edges.first()
+    }
+
+    /// last_edge returns the last edge's node if exists
+    pub fn last_edge(&self) -> Option<Arc<Node<T>>> {
+        self.edges.last()
+    }
 }
 
 /// A leaf node represents the end of a key in the radix tree and holds the associated value.

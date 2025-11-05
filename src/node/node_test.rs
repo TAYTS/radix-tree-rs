@@ -1144,4 +1144,59 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn test_is_empty() {
+        {
+            // non-empty node
+            let root = get_test_tree();
+            assert!(!root.empty_edge(), "node with edges should not be empty");
+        }
+
+        {
+            // empty node
+            let root = Node::<TestValue>::default();
+            assert!(root.empty_edge(), "node with no edges should be empty");
+        }
+    }
+
+    #[test]
+    fn test_first_edge() {
+        {
+            // get first edge correctly
+            let root = get_test_tree();
+
+            let first_edge_node = root.first_edge();
+            assert!(first_edge_node.is_some());
+            let first_edge_node = first_edge_node.unwrap();
+            assert_eq!(first_edge_node.prefix.read().as_str(), "0");
+        }
+
+        {
+            // empty node returns None
+            let root = Node::<TestValue>::default();
+            let first_edge_node = root.first_edge();
+            assert!(first_edge_node.is_none());
+        }
+    }
+
+    #[test]
+    fn test_last_edge() {
+        {
+            // get last edge correctly
+            let root = get_test_tree();
+
+            let last_edge_node = root.last_edge();
+            assert!(last_edge_node.is_some());
+            let last_edge_node = last_edge_node.unwrap();
+            assert_eq!(last_edge_node.prefix.read().as_str(), "100");
+        }
+
+        {
+            // empty node returns None
+            let root = Node::<TestValue>::default();
+            let last_edge_node = root.last_edge();
+            assert!(last_edge_node.is_none());
+        }
+    }
 }
