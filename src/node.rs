@@ -183,6 +183,32 @@ impl<T: NodeValue> Edges<T> {
     fn clear(&self) {
         self.0.write().clear();
     }
+
+    /// reset removes all edges and resets capacity
+    fn reset(&self) {
+        self.0.write().clear();
+        *self.0.write() = Vec::new();
+    }
+
+    /// pop removes and returns the last edge
+    fn pop(&self) -> Option<Edge<T>> {
+        self.0.write().pop()
+    }
+
+    /// collect_into drains all edges from self and inserts them into other
+    fn collect_into(&self, other: &Edges<T>) {
+        let mut self_guard = self.0.write();
+        let mut other_guard = other.0.write();
+
+        let self_len = self_guard.len();
+        let other_capacity = other_guard.capacity();
+        if other_capacity < self_len {
+            other_guard.reserve(self_len - other_capacity);
+        }
+
+        let self_iter = self_guard.drain(..).into_iter();
+        other_guard.extend(self_iter);
+    }
 }
 
 /// An immutable node in the radix tree, which may contains a value if it is a leaf node.
@@ -449,9 +475,24 @@ impl<T: NodeValue> Node<T> {
         self.edges.last()
     }
 
-    /// clear_edge removes all edges
+    /// clear_edges removes all edges
     pub fn clear_edges(&self) {
         self.edges.clear();
+    }
+
+    /// reset_edges removes all edges and resets capacity
+    pub fn reset_edges(&self) {
+        self.edges.reset();
+    }
+
+    /// pop_edge removes and returns the last edge
+    pub fn pop_edge(&self) -> Option<Edge<T>> {
+        self.edges.pop()
+    }
+
+    /// collect_into_edges collects all edges from self and inserts them into other
+    pub fn collect_into_edges(&self, edges: &Edges<T>) {
+        self.edges.collect_into(edges)
     }
 }
 

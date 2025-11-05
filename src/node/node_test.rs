@@ -1243,4 +1243,152 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_reset_edges() {
+        {
+            let node = get_test_tree();
+            assert_eq!(node.edge_len(), 2, "node should have 2 edges before reset");
+
+            node.reset_edges();
+            assert_eq!(node.edge_len(), 0, "node should have 0 edges after reset");
+        }
+
+        {
+            // empty node
+            let node: Node<TestValue> = Node::default();
+            assert_eq!(
+                node.edge_len(),
+                0,
+                "empty node should have 0 edges before reset"
+            );
+
+            node.reset_edges();
+            assert_eq!(
+                node.edge_len(),
+                0,
+                "empty node should have 0 edges after reset"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pop_edges() {
+        {
+            // node with edges
+            let source_node = get_test_tree();
+            assert_eq!(
+                source_node.edge_len(),
+                2,
+                "source node should have 2 edges before pop"
+            );
+
+            let edge = source_node.pop_edge();
+            assert!(edge.is_some(), "popped edge should exist");
+            assert_eq!(
+                source_node.edge_len(),
+                1,
+                "source node should have 1 edge after pop"
+            );
+            assert_eq!(
+                edge.unwrap().label,
+                b'1',
+                "popped edge should have label '1'"
+            );
+
+            let edge = source_node.pop_edge();
+            assert!(edge.is_some(), "popped edge should exist");
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges after pop"
+            );
+            assert_eq!(
+                edge.unwrap().label,
+                b'0',
+                "popped edge should have label '0'"
+            );
+        }
+
+        {
+            // empty node
+            let source_node: Node<TestValue> = Node::default();
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges before pop"
+            );
+
+            let edge = source_node.pop_edge();
+            assert!(edge.is_none(), "popped edge should not exist");
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges after pop"
+            );
+        }
+    }
+
+    #[test]
+    fn test_collect_into_edges() {
+        {
+            // collect edges from one node to another
+            let source_node = get_test_tree();
+            let target_node: Node<TestValue> = Node::default();
+
+            assert_eq!(
+                source_node.edge_len(),
+                2,
+                "source node should have 2 edges before collect"
+            );
+            assert_eq!(
+                target_node.edge_len(),
+                0,
+                "target node should have 0 edges before collect"
+            );
+
+            source_node.collect_into_edges(&target_node.edges);
+
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges after collect"
+            );
+            assert_eq!(
+                target_node.edge_len(),
+                2,
+                "target node should have 2 edges after collect"
+            );
+        }
+
+        {
+            // collect edges from empty node to another
+            let source_node: Node<TestValue> = Node::default();
+            let target_node: Node<TestValue> = Node::default();
+
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges before collect"
+            );
+            assert_eq!(
+                target_node.edge_len(),
+                0,
+                "target node should have 0 edges before collect"
+            );
+
+            source_node.collect_into_edges(&target_node.edges);
+
+            assert_eq!(
+                source_node.edge_len(),
+                0,
+                "source node should have 0 edges after collect"
+            );
+            assert_eq!(
+                target_node.edge_len(),
+                0,
+                "target node should have 0 edges after collect"
+            );
+        }
+    }
 }
