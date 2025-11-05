@@ -32,6 +32,16 @@ where
     pub writable: Option<LruCache<Arc<Node<T>>, ()>>,
 }
 
+impl<T: NodeValue> Clone for Txn<T> {
+    fn clone(&self) -> Self {
+        Txn {
+            root: RwLock::new(self.root.read().clone()),
+            size: AtomicU32::new(self.size.load(atomic::Ordering::Relaxed)),
+            writable: None,
+        }
+    }
+}
+
 impl<T: NodeValue> Txn<T> {
     fn internal_insert(
         &mut self,
@@ -178,7 +188,7 @@ impl<T: NodeValue> Txn<T> {
 }
 
 impl<T: NodeValue> Txn<T> {
-    /// Insert add/update a given key. If the key already exists, its value is updated and the old value is returned.
+    /// insert add/update a given key. If the key already exists, its value is updated and the old value is returned.
     pub fn insert(&mut self, key: &str, value: T) -> Option<T> {
         let root = self.root.read().clone();
         let (new_node, old_value) = self.internal_insert(root, key, key, value);
@@ -194,11 +204,66 @@ impl<T: NodeValue> Txn<T> {
         }
         old_value
     }
+
+    /// merge_child is used to collapse the given node with its child.
+    /// This should only be called when the given node is not a leaf and has a single edge.
+    fn merge_child(&mut self, node: Arc<Node<T>>) {
+        assert!(!node.is_leaf(), "cannot merge a leaf node");
+        assert!(
+            node.edge_len() == 1,
+            "node must have a single edge to merge"
+        );
+
+        let child_edge = node.pop_edge().expect("node should have at least one edge");
+        let child_node = child_edge.node;
+
+        {
+            // merge the prefixes
+            let mut write_guard = node.prefix.write();
+            write_guard.push_str(child_node.prefix.read().as_str());
+
+            // move the leaf node from the child to the parent
+            let mut child_leaf_write_guard = child_node.leaf.write();
+            let child_leaf = child_leaf_write_guard.take();
+
+            let mut leaf_write = node.leaf.write();
+            *leaf_write = child_leaf;
+        }
+
+        if child_node.edge_len() > 0 {
+            child_node.collect_into_edges(&node.edges);
+        } else {
+            node.reset_edges();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
+
     use super::*;
+
+    #[test]
+    fn test_txn_clone() {
+        let mut txn: Txn<u32> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        txn.insert("001", 1);
+        txn.insert("002", 2);
+
+        let txn_clone = txn.clone();
+
+        assert_eq!(txn.root.read().as_ref(), txn_clone.root.read().as_ref());
+        assert_eq!(
+            txn.size.load(Ordering::Relaxed),
+            txn_clone.size.load(Ordering::Relaxed)
+        );
+        assert_eq!(txn_clone.size.load(Ordering::Relaxed), 2);
+    }
 
     #[test]
     fn test_txn_insert() {
@@ -603,5 +668,121 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn test_txn_merge_child() {
+        let mut txn: Txn<u32> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        // construct a node with single child
+        let parent_node = Arc::new(Node {
+            prefix: RwLock::new("parent".to_string()),
+            ..Default::default()
+        });
+
+        let child_node = Arc::new(Node {
+            prefix: RwLock::new("child".to_string()),
+            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                key: "child_key".to_string(),
+                value: 42,
+            }))),
+            edges: vec![Edge {
+                label: b'1',
+                node: Arc::new(Node {
+                    prefix: RwLock::new("1".to_string()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        key: "001".to_string(),
+                        value: 1,
+                    }))),
+                    ..Default::default()
+                }),
+            }]
+            .into(),
+        });
+
+        parent_node.add_edge(Edge {
+            label: b'c',
+            node: child_node.clone(),
+        });
+
+        // merge the child into the parent
+        txn.merge_child(parent_node.clone());
+
+        // verify the parent node has been updated correctly
+        assert_eq!(parent_node.prefix.read().as_str(), "parentchild");
+        assert!(parent_node.is_leaf());
+
+        let leaf = parent_node.leaf.read();
+        assert!(leaf.is_some());
+        let leaf = leaf.as_ref().unwrap();
+        assert_eq!(leaf.key, "child_key");
+        assert_eq!(leaf.value, 42);
+        assert_eq!(parent_node.edge_len(), 1);
+        assert_eq!(
+            parent_node.edges,
+            vec![Edge {
+                label: b'1',
+                node: Arc::new(Node {
+                    prefix: RwLock::new("1".to_string()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        key: "001".to_string(),
+                        value: 1,
+                    }))),
+                    ..Default::default()
+                }),
+            }]
+            .into()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot merge a leaf node")]
+    fn test_txn_merge_child_panic_for_leaf_node() {
+        let mut txn: Txn<u32> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        let leaf_node = Arc::new(Node {
+            prefix: RwLock::new("leaf".to_string()),
+            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                key: "leaf_key".to_string(),
+                value: 42,
+            }))),
+            ..Default::default()
+        });
+
+        txn.merge_child(leaf_node);
+    }
+
+    #[test]
+    #[should_panic(expected = "node must have a single edge to merge")]
+    fn test_txn_merge_child_panic_for_multiple_edges() {
+        let mut txn: Txn<u32> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        let parent_node = Arc::new(Node {
+            prefix: RwLock::new("parent".to_string()),
+            ..Default::default()
+        });
+
+        parent_node.add_edge(Edge {
+            label: b'a',
+            node: Arc::new(Node::default()),
+        });
+        parent_node.add_edge(Edge {
+            label: b'b',
+            node: Arc::new(Node::default()),
+        });
+
+        txn.merge_child(parent_node);
     }
 }
