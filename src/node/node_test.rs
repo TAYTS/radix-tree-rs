@@ -1161,6 +1161,21 @@ mod tests {
     }
 
     #[test]
+    fn test_edge_len() {
+        {
+            // node with edges
+            let root = get_test_tree();
+            assert_eq!(root.edge_len(), 2, "node should have 2 edges");
+        }
+
+        {
+            // empty node
+            let root = Node::<TestValue>::default();
+            assert_eq!(root.edge_len(), 0, "empty node should have 0 edges");
+        }
+    }
+
+    #[test]
     fn test_first_edge() {
         {
             // get first edge correctly

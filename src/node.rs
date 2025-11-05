@@ -154,6 +154,11 @@ impl<T: NodeValue> Edges<T> {
         self.0.read().is_empty()
     }
 
+    /// len returns the number of edges
+    fn len(&self) -> usize {
+        self.0.read().len()
+    }
+
     /// first returns the first edge's node if exists
     fn first(&self) -> Option<Arc<Node<T>>> {
         let self_edges = self.0.read();
@@ -422,6 +427,11 @@ impl<T: NodeValue> Node<T> {
     /// empty_edge returns true if there are no edges
     pub fn empty_edge(&self) -> bool {
         self.edges.is_empty()
+    }
+
+    /// edge_len returns the number of edges
+    pub fn edge_len(&self) -> usize {
+        self.edges.len()
     }
 
     /// first_edge returns the first edge's node if exists
