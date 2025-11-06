@@ -42,6 +42,7 @@ impl<T: NodeValue> Clone for Txn<T> {
     }
 }
 
+/// Internal helper methods for Txn
 impl<T: NodeValue> Txn<T> {
     fn internal_insert(
         &mut self,
@@ -185,29 +186,75 @@ impl<T: NodeValue> Txn<T> {
         self.writable.as_mut().unwrap().put(clone_node.clone(), ());
         clone_node
     }
-}
 
-impl<T: NodeValue> Txn<T> {
-    /// insert add/update a given key. If the key already exists, its value is updated and the old value is returned.
-    pub fn insert(&mut self, key: &str, value: T) -> Option<T> {
-        let root = self.root.read().clone();
-        let (new_node, old_value) = self.internal_insert(root, key, key, value);
+    fn internal_delete(
+        &mut self,
+        node: Arc<Node<T>>,
+        search: &str,
+    ) -> (Option<Arc<Node<T>>>, Option<Arc<LeafNode<T>>>) {
+        if search.is_empty() {
+            if !node.is_leaf() {
+                return (None, None);
+            }
 
-        if let Some(node) = new_node {
-            let mut root_guard = self.root.write();
-            *root_guard = node;
+            let new_node = self.get_writable_node(node.clone());
+            let node_leaf = new_node.leaf.write().take();
+
+            let should_merge_child =
+                self.root.read().as_ref() != node.as_ref() && new_node.edge_len() == 1;
+            if should_merge_child {
+                self.merge_child(new_node.as_ref());
+            }
+            return (Some(new_node), node_leaf);
         }
 
-        if old_value.is_none() {
-            // TODO: revisit the memory ordering here
-            self.size.fetch_add(1, atomic::Ordering::Relaxed);
+        let label = search.as_bytes()[0];
+        let node_edge = node.get_edge(label);
+        if node_edge.is_none()
+            || node_edge.as_ref().is_some_and(|(_, child_node)| {
+                !search.starts_with(child_node.prefix.read().as_str())
+            })
+        {
+            return (None, None);
         }
-        old_value
+
+        let (edge_idx, child_node) = node_edge.unwrap();
+
+        // continue searching in the child node
+        let search = &search[child_node.prefix.read().len()..];
+        let (new_child_node, leaf) = self.internal_delete(child_node, search);
+        if new_child_node.is_none() {
+            return (None, None);
+        }
+
+        let new_child_node = new_child_node.unwrap();
+        let writable_node = self.get_writable_node(node.clone());
+        if !new_child_node.is_leaf() && new_child_node.edge_len() == 0 {
+            // remove the edge to the child node
+            writable_node.delete_edge(label);
+
+            let should_merge_child = self.root.read().as_ref() != node.as_ref()
+                && !writable_node.is_leaf()
+                && writable_node.edge_len() == 1;
+            if should_merge_child {
+                self.merge_child(writable_node.as_ref());
+            }
+        } else {
+            writable_node.replace_edge_at(
+                edge_idx,
+                Edge {
+                    label,
+                    node: new_child_node,
+                },
+            );
+        }
+
+        (Some(writable_node), leaf)
     }
 
     /// merge_child is used to collapse the given node with its child.
     /// This should only be called when the given node is not a leaf and has a single edge.
-    fn merge_child(&mut self, node: Arc<Node<T>>) {
+    fn merge_child(&mut self, node: &Node<T>) {
         assert!(!node.is_leaf(), "cannot merge a leaf node");
         assert!(
             node.edge_len() == 1,
@@ -235,6 +282,42 @@ impl<T: NodeValue> Txn<T> {
         } else {
             node.reset_edges();
         }
+    }
+}
+
+/// Public APIs for Txn
+impl<T: NodeValue> Txn<T> {
+    /// insert add/update a given key. If the key already exists, its value is updated and the old value is returned.
+    pub fn insert(&mut self, key: &str, value: T) -> Option<T> {
+        let root = self.root.read().clone();
+        let (new_node, old_value) = self.internal_insert(root, key, key, value);
+
+        if let Some(node) = new_node {
+            let mut root_guard = self.root.write();
+            *root_guard = node;
+        }
+
+        if old_value.is_none() {
+            // TODO: revisit the memory ordering here
+            self.size.fetch_add(1, atomic::Ordering::Relaxed);
+        }
+        old_value
+    }
+
+    /// delete removes the given key from the tree. If the key exists, its value is returned.
+    pub fn delete(&mut self, key: &str) -> Option<T> {
+        let root = self.root.read().clone();
+        let (new_root, old_value) = self.internal_delete(root, key);
+        if let Some(new_root) = new_root {
+            let mut root_guard = self.root.write();
+            *root_guard = new_root;
+        }
+        if let Some(old_value) = old_value {
+            self.size.fetch_sub(1, atomic::Ordering::Relaxed);
+            // TODO: revisit to unwrap from Arc
+            return Some(old_value.value.clone());
+        }
+        None
     }
 }
 
@@ -671,6 +754,39 @@ mod tests {
     }
 
     #[test]
+    fn test_txn_delete() {
+        let mut txn: Txn<bool> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        let mock_keys = vec!["", "001", "002", "003", "010", "100"];
+
+        // setup initial keys
+        for key in mock_keys.iter() {
+            let result = txn.insert(key, true);
+            assert!(result.is_none());
+        }
+
+        // delete keys one by one
+        for key in mock_keys.iter() {
+            // delete for the first time
+            let old_size = txn.size.load(atomic::Ordering::Relaxed);
+            let result = txn.delete(key);
+            assert!(result.is_some());
+            assert_eq!(result.unwrap(), true);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), old_size - 1);
+
+            // delete the second time, should be no-op
+            let new_size = txn.size.load(atomic::Ordering::Relaxed);
+            let result = txn.delete(key);
+            assert!(result.is_none());
+            assert!(old_size - 1 == new_size);
+        }
+    }
+
+    #[test]
     fn test_txn_merge_child() {
         let mut txn: Txn<u32> = Txn {
             root: RwLock::new(Arc::new(Node::default())),
@@ -710,7 +826,7 @@ mod tests {
         });
 
         // merge the child into the parent
-        txn.merge_child(parent_node.clone());
+        txn.merge_child(parent_node.as_ref());
 
         // verify the parent node has been updated correctly
         assert_eq!(parent_node.prefix.read().as_str(), "parentchild");
@@ -757,7 +873,7 @@ mod tests {
             ..Default::default()
         });
 
-        txn.merge_child(leaf_node);
+        txn.merge_child(leaf_node.as_ref());
     }
 
     #[test]
@@ -783,6 +899,6 @@ mod tests {
             node: Arc::new(Node::default()),
         });
 
-        txn.merge_child(parent_node);
+        txn.merge_child(parent_node.as_ref());
     }
 }
