@@ -2,7 +2,7 @@ use std::{
     num::NonZeroUsize,
     sync::{
         Arc,
-        atomic::{self, AtomicU32},
+        atomic::{self, AtomicU32, Ordering},
     },
 };
 
@@ -12,6 +12,7 @@ use parking_lot::RwLock;
 use crate::{
     NodeValue,
     node::{Edge, LeafNode, Node},
+    tree::Tree,
     utils::longest_prefix,
 };
 
@@ -230,14 +231,13 @@ impl<T: NodeValue> Txn<T> {
         let new_child_node = new_child_node.unwrap();
         let writable_node = self.get_writable_node(node.clone());
         if !new_child_node.is_leaf() && new_child_node.edge_len() == 0 {
-            // remove the edge to the child node
             writable_node.delete_edge(label);
 
             let should_merge_child = self.root.read().as_ref() != node.as_ref()
                 && !writable_node.is_leaf()
                 && writable_node.edge_len() == 1;
             if should_merge_child {
-                self.merge_child(writable_node.as_ref());
+                self.merge_child(&writable_node);
             }
         } else {
             writable_node.replace_edge_at(
@@ -250,6 +250,69 @@ impl<T: NodeValue> Txn<T> {
         }
 
         (Some(writable_node), leaf)
+    }
+
+    fn internal_delete_prefix(
+        &mut self,
+        node: Arc<Node<T>>,
+        search: &str,
+    ) -> (Option<Arc<Node<T>>>, u32) {
+        if search.is_empty() {
+            let writable_node = self.get_writable_node(node.clone());
+            if node.is_leaf() {
+                writable_node.leaf.write().take();
+            }
+            writable_node.reset_edges();
+            return (Some(writable_node), self.count_node(node.as_ref()));
+        }
+
+        let mut search = search;
+        let label = search.as_bytes()[0];
+        let node_edge = node.get_edge(label);
+        if node_edge.is_none()
+            || node_edge.as_ref().is_some_and(|(_, child_node)| {
+                let child_prefix = child_node.prefix.read();
+                let child_prefix_str = child_prefix.as_str();
+                !child_prefix_str.starts_with(search) && !search.starts_with(child_prefix_str)
+            })
+        {
+            return (None, 0);
+        }
+
+        let (edge_idx, child_node) = node_edge.unwrap();
+
+        if child_node.prefix.read().as_str().len() > search.len() {
+            search = "";
+        } else {
+            search = &search[child_node.prefix.read().as_str().len()..];
+        }
+
+        let (new_child_node, deleted_count) = self.internal_delete_prefix(child_node, search);
+        if new_child_node.is_none() {
+            return (None, 0);
+        }
+
+        let new_child_node = new_child_node.unwrap();
+        let writable_node = self.get_writable_node(node.clone());
+
+        if !new_child_node.is_leaf() && new_child_node.edge_len() == 0 {
+            writable_node.delete_edge(label);
+            let should_merge_child = self.root.read().as_ref() != node.as_ref()
+                && !writable_node.is_leaf()
+                && writable_node.edge_len() == 1;
+            if should_merge_child {
+                self.merge_child(&writable_node);
+            }
+        } else {
+            writable_node.replace_edge_at(
+                edge_idx,
+                Edge {
+                    label,
+                    node: new_child_node,
+                },
+            );
+        }
+        (Some(writable_node), deleted_count)
     }
 
     /// merge_child is used to collapse the given node with its child.
@@ -283,6 +346,17 @@ impl<T: NodeValue> Txn<T> {
             node.reset_edges();
         }
     }
+
+    /// count_node returns the number of leaf nodes in the subtree rooted at the given node.
+    fn count_node(&self, node: &Node<T>) -> u32 {
+        let mut count = 0;
+        if node.is_leaf() {
+            count += 1;
+        }
+        // recursively count child nodes
+        node.for_each_edge(|edge| count += self.count_node(&edge.node));
+        count
+    }
 }
 
 /// Public APIs for Txn
@@ -313,11 +387,36 @@ impl<T: NodeValue> Txn<T> {
             *root_guard = new_root;
         }
         if let Some(old_value) = old_value {
-            self.size.fetch_sub(1, atomic::Ordering::Relaxed);
+            self.size.fetch_sub(1, Ordering::Relaxed);
             // TODO: revisit to unwrap from Arc
             return Some(old_value.value.clone());
         }
         None
+    }
+
+    /// delete_prefix removes all keys with the given prefix from the tree.
+    /// Returns true if any keys were deleted.
+    pub fn delete_prefix(&mut self, prefix: &str) -> bool {
+        let root = self.root.read().clone();
+        let (new_root, deleted_count) = self.internal_delete_prefix(root, prefix);
+        if let Some(new_root) = new_root {
+            let mut root_guard = self.root.write();
+            *root_guard = new_root;
+            self.size.fetch_sub(deleted_count, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
+    /// commit finalizes the transaction and returns the new tree.
+    pub fn commit(&mut self) -> Tree<T> {
+        // clear writable cache
+        self.writable.take();
+        // TODO: support notifying subscribers about the changes
+        Tree {
+            root: self.root.read().clone(),
+            size: self.size.load(atomic::Ordering::Relaxed),
+        }
     }
 }
 
@@ -783,6 +882,115 @@ mod tests {
             let result = txn.delete(key);
             assert!(result.is_none());
             assert!(old_size - 1 == new_size);
+        }
+    }
+
+    #[test]
+    fn test_txn_delete_prefix() {
+        // TODO: verify the tree structure(keys) after deletion
+        {
+            // prefix not a node in tree
+            let mut txn: Txn<bool> = Txn {
+                root: RwLock::new(Arc::new(Node::default())),
+                size: AtomicU32::new(0),
+                writable: None,
+            };
+            let mock_keys = vec!["", "test/test1", "test/test2", "test/test3", "R", "RA"];
+            for key in mock_keys.iter() {
+                let result = txn.insert(key, true);
+                assert!(result.is_none());
+            }
+            txn.commit();
+
+            let old_size = txn.size.load(atomic::Ordering::Relaxed);
+            assert_eq!(old_size, 6);
+
+            let has_deleted = txn.delete_prefix("test");
+            assert!(has_deleted);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), old_size - 3);
+        }
+
+        {
+            // prefix is a node in tree
+            let mut txn: Txn<bool> = Txn {
+                root: RwLock::new(Arc::new(Node::default())),
+                size: AtomicU32::new(0),
+                writable: None,
+            };
+            let mock_keys = vec![
+                "",
+                "test",
+                "test/test1",
+                "test/test2",
+                "test/test3",
+                "test/testAAA",
+                "R",
+                "RA",
+            ];
+            for key in mock_keys.iter() {
+                let result = txn.insert(key, true);
+                assert!(result.is_none());
+            }
+            txn.commit();
+
+            let old_size = txn.size.load(atomic::Ordering::Relaxed);
+            assert_eq!(old_size, 8);
+
+            let has_deleted = txn.delete_prefix("test");
+            assert!(has_deleted);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), old_size - 5);
+        }
+
+        {
+            // longer prefix and not a node in tree
+            let mut txn: Txn<bool> = Txn {
+                root: RwLock::new(Arc::new(Node::default())),
+                size: AtomicU32::new(0),
+                writable: None,
+            };
+            let mock_keys = vec![
+                "",
+                "test/test1",
+                "test/test2",
+                "test/test3",
+                "test/testAAA",
+                "R",
+                "RA",
+            ];
+            for key in mock_keys.iter() {
+                let result = txn.insert(key, true);
+                assert!(result.is_none());
+            }
+            txn.commit();
+
+            let old_size = txn.size.load(atomic::Ordering::Relaxed);
+            assert_eq!(old_size, 7);
+
+            let has_deleted = txn.delete_prefix("test/test");
+            assert!(has_deleted);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), old_size - 4);
+        }
+
+        {
+            // prefix match single node
+            let mut txn: Txn<bool> = Txn {
+                root: RwLock::new(Arc::new(Node::default())),
+                size: AtomicU32::new(0),
+                writable: None,
+            };
+            let mock_keys = vec!["", "AB", "ABC", "AR", "R", "RA"];
+            for key in mock_keys.iter() {
+                let result = txn.insert(key, true);
+                assert!(result.is_none());
+            }
+            txn.commit();
+
+            let old_size = txn.size.load(atomic::Ordering::Relaxed);
+            assert_eq!(old_size, 6);
+
+            let has_deleted = txn.delete_prefix("AR");
+            assert!(has_deleted);
+            assert_eq!(txn.size.load(atomic::Ordering::Relaxed), old_size - 1);
         }
     }
 
