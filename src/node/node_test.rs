@@ -12,6 +12,55 @@ mod tests {
     }
 
     #[test]
+    fn test_node_clone() {
+        let original_node: Node<TestValue> = Node {
+            prefix: RwLock::new("prefix".into()),
+            leaf: RwLock::new(Some(Arc::new(LeafNode {
+                value: TestValue {
+                    data: "value".into(),
+                },
+                key: "key".into(),
+            }))),
+            edges: vec![Edge {
+                label: b'a',
+                node: Arc::new(Node {
+                    prefix: RwLock::new("a".into()),
+                    leaf: RwLock::new(Some(Arc::new(LeafNode {
+                        value: TestValue {
+                            data: "a_value".into(),
+                        },
+                        key: "a_key".into(),
+                    }))),
+                    edges: vec![Edge {
+                        label: b'b',
+                        node: Arc::new(Node {
+                            prefix: RwLock::new("ab".into()),
+                            ..Default::default()
+                        }),
+                    }]
+                    .into(),
+                }),
+            }]
+            .into(),
+        }
+        .into();
+
+        let cloned_node = original_node.clone();
+        cloned_node.reset_edges();
+
+        assert_eq!(
+            cloned_node.edge_len(),
+            0,
+            "cloned node should have no edges"
+        );
+        assert_eq!(
+            original_node.edge_len(),
+            1,
+            "original node should remain unchanged"
+        );
+    }
+
+    #[test]
     fn test_node_equality() {
         let base_node: Node<TestValue> = Node {
             prefix: RwLock::new("prefix".into()),
@@ -1390,5 +1439,14 @@ mod tests {
                 "target node should have 0 edges after collect"
             );
         }
+    }
+
+    #[test]
+    fn test_for_each_edge() {
+        let mock_tree = get_test_tree();
+        let mut tree_labels: Vec<u8> = Vec::new();
+
+        mock_tree.for_each_edge(|edge| tree_labels.push(edge.label));
+        assert_eq!(tree_labels, vec![b'0', b'1'], "edge labels should match");
     }
 }

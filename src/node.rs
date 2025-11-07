@@ -209,6 +209,14 @@ impl<T: NodeValue> Edges<T> {
         let self_iter = self_guard.drain(..).into_iter();
         other_guard.extend(self_iter);
     }
+
+    /// for_each iterates over each edge and applies the given function
+    fn for_each<F>(&self, f: F)
+    where
+        F: FnMut(&Edge<T>),
+    {
+        self.0.read().iter().for_each(f);
+    }
 }
 
 /// An immutable node in the radix tree, which may contains a value if it is a leaf node.
@@ -493,6 +501,14 @@ impl<T: NodeValue> Node<T> {
     /// collect_into_edges collects all edges from self and inserts them into other
     pub fn collect_into_edges(&self, edges: &Edges<T>) {
         self.edges.collect_into(edges)
+    }
+
+    /// for_each_edge iterates over each edge and applies the given function
+    pub fn for_each_edge<F>(&self, f: F)
+    where
+        F: FnMut(&Edge<T>),
+    {
+        self.edges.for_each(f);
     }
 }
 
