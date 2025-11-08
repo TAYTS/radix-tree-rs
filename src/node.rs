@@ -12,9 +12,21 @@ pub struct Edge<T>
 where
     T: NodeValue,
 {
-    pub(crate) label: u8,
+    label: u8,
     // TODO: re-check if we need deep clone here
-    pub(crate) node: Arc<Node<T>>,
+    node: Arc<Node<T>>,
+}
+
+impl<T: NodeValue> Edge<T> {
+    /// Creates a new edge with the given label and node.
+    pub(crate) fn new(label: u8, node: Arc<Node<T>>) -> Self {
+        Self { label, node }
+    }
+
+    /// Get the node of the edge.
+    pub(crate) fn get_node(&self) -> &Node<T> {
+        &self.node
+    }
 }
 
 impl<T: NodeValue> PartialOrd for Edge<T> {
@@ -279,9 +291,28 @@ impl<T: NodeValue> Node<T> {
         }
     }
 
+    /// Creates a new node with the given prefix, optional leaf node, and edges.
+    pub(crate) fn new_with_edges(
+        prefix: &str,
+        leaf: Option<LeafNode<T>>,
+        edges: Vec<Edge<T>>,
+    ) -> Self {
+        let mut node = Self::new(prefix, leaf);
+        node.edges = Edges::from(edges);
+        node
+    }
+
     /// Returns true if the node is a leaf node.
     pub(crate) fn is_leaf(&self) -> bool {
         self.leaf.read().is_some()
+    }
+
+    /// Returns the value of the leaf node if exists.
+    pub(crate) fn get_value(&self) -> Option<T> {
+        match self.leaf.read().as_ref() {
+            Some(leaf_node) => Some(leaf_node.value.clone()),
+            None => None,
+        }
     }
 
     /// Replaces the prefix of the node.
@@ -333,7 +364,7 @@ impl<T: NodeValue> Node<T> {
     }
 
     /// Returns the value associated with the given key if exists.
-    pub fn get(&self, key: &str) -> Option<T> {
+    pub(crate) fn get(&self, key: &str) -> Option<T> {
         let mut search_bytes = key.as_bytes();
         let mut current_node: Option<Arc<Node<T>>> = None;
 
@@ -369,7 +400,7 @@ impl<T: NodeValue> Node<T> {
     }
 
     /// Returns the key and value with the longest prefix match for the given key.
-    pub fn longest_prefix(&self, key: &str) -> Option<(String, T)> {
+    pub(crate) fn longest_prefix(&self, key: &str) -> Option<(String, T)> {
         let mut last: Option<Arc<LeafNode<T>>> = None;
         let mut search_bytes = key.as_bytes();
         let mut current_node: Option<Arc<Node<T>>> = None;
@@ -412,7 +443,7 @@ impl<T: NodeValue> Node<T> {
     }
 
     /// Returns the key and value with the minimum key in the subtree.
-    pub fn minimum(&self) -> Option<(String, T)> {
+    pub(crate) fn minimum(&self) -> Option<(String, T)> {
         let mut current_node: Option<Arc<Node<T>>> = None;
         loop {
             let node = match current_node.as_ref() {
@@ -437,7 +468,7 @@ impl<T: NodeValue> Node<T> {
     }
 
     /// Returns the key and value with the maximum key in the subtree.
-    pub fn maximum(&self) -> Option<(String, T)> {
+    pub(crate) fn maximum(&self) -> Option<(String, T)> {
         let mut current_node: Option<Arc<Node<T>>> = None;
         loop {
             let node = match current_node.as_ref() {
@@ -462,47 +493,47 @@ impl<T: NodeValue> Node<T> {
     }
 
     /// Returns true if there are no edges.
-    pub fn empty_edge(&self) -> bool {
+    pub(crate) fn empty_edge(&self) -> bool {
         self.edges.is_empty()
     }
 
     /// Returns the number of edges.
-    pub fn edge_len(&self) -> usize {
+    pub(crate) fn edge_len(&self) -> usize {
         self.edges.len()
     }
 
     /// Returns the first edge's node if exists.
-    pub fn first_edge(&self) -> Option<Arc<Node<T>>> {
+    pub(crate) fn first_edge(&self) -> Option<Arc<Node<T>>> {
         self.edges.first()
     }
 
     /// Returns the last edge's node if exists.
-    pub fn last_edge(&self) -> Option<Arc<Node<T>>> {
+    pub(crate) fn last_edge(&self) -> Option<Arc<Node<T>>> {
         self.edges.last()
     }
 
     /// Clears all edges.
-    pub fn clear_edges(&self) {
+    pub(crate) fn clear_edges(&self) {
         self.edges.clear();
     }
 
     /// Resets all edges and clears capacity.
-    pub fn reset_edges(&self) {
+    pub(crate) fn reset_edges(&self) {
         self.edges.reset();
     }
 
     /// Removes and returns the last edge.
-    pub fn pop_edge(&self) -> Option<Edge<T>> {
+    pub(crate) fn pop_edge(&self) -> Option<Edge<T>> {
         self.edges.pop()
     }
 
     /// Collects all edges from self and inserts them into other.
-    pub fn collect_into_edges(&self, edges: &Edges<T>) {
+    pub(crate) fn collect_into_edges(&self, edges: &Edges<T>) {
         self.edges.collect_into(edges)
     }
 
     /// Iterates over each edge and applies the given function.
-    pub fn for_each_edge<F>(&self, f: F)
+    pub(crate) fn for_each_edge<F>(&self, f: F)
     where
         F: FnMut(&Edge<T>),
     {
@@ -516,6 +547,26 @@ pub struct LeafNode<T>
 where
     T: NodeValue,
 {
-    pub(crate) value: T,
-    pub(crate) key: String,
+    key: String,
+    value: T,
+}
+
+impl<T: NodeValue> LeafNode<T> {
+    /// Creates a new leaf node with the given key and value.
+    pub(crate) fn new(key: &str, value: T) -> Self {
+        Self {
+            key: key.to_string(),
+            value,
+        }
+    }
+
+    /// Returns the key of the leaf node.
+    pub(crate) fn get_key(&self) -> &str {
+        &self.key
+    }
+
+    /// Returns the value of the leaf node.
+    pub(crate) fn get_value(&self) -> &T {
+        &self.value
+    }
 }

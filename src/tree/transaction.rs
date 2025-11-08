@@ -57,15 +57,12 @@ impl<T: NodeValue> Txn<T> {
         if search.is_empty() {
             let mut old_value: Option<T> = None;
             if node.is_leaf() {
-                let leaf_value = node.leaf.read().as_ref().unwrap().value.clone();
+                let leaf_value = node.get_value().unwrap();
                 old_value = Some(leaf_value);
             }
 
             let new_node = self.get_writable_node(node);
-            let leaf_node = LeafNode {
-                key: key.to_string(),
-                value: value,
-            };
+            let leaf_node = LeafNode::new(key, value);
             new_node.replace_leaf(Some(leaf_node));
             return (Some(new_node), old_value);
         }
@@ -74,19 +71,9 @@ impl<T: NodeValue> Txn<T> {
 
         // no edge found, insert new edge
         if node_edge.is_none() {
-            let new_leaf_node = LeafNode {
-                key: key.to_string(),
-                value: value,
-            };
-            let new_node = Node {
-                prefix: RwLock::new(search.to_string()),
-                leaf: RwLock::new(Some(Arc::new(new_leaf_node))),
-                ..Default::default()
-            };
-            let new_edge = Edge {
-                label: search.as_bytes()[0],
-                node: Arc::new(new_node),
-            };
+            let new_leaf_node = LeafNode::new(key, value);
+            let new_node = Node::new(search, new_leaf_node.into());
+            let new_edge = Edge::new(search.as_bytes()[0], new_node.into());
             let writable_node = self.get_writable_node(node);
             writable_node.add_edge(new_edge);
             return (Some(writable_node), None);
@@ -101,10 +88,7 @@ impl<T: NodeValue> Txn<T> {
                 self.internal_insert(child_node, key, new_search, value);
             if let Some(new_child_node) = new_child_node {
                 let writable_node = self.get_writable_node(node);
-                let new_edge = Edge {
-                    label: search.as_bytes()[0],
-                    node: new_child_node,
-                };
+                let new_edge = Edge::new(search.as_bytes()[0], new_child_node);
                 // TODO: maybe we should use `replace_edge` here
                 writable_node.replace_edge_at(edge_idx, new_edge);
                 return (Some(writable_node), old_value);
@@ -114,23 +98,17 @@ impl<T: NodeValue> Txn<T> {
 
         // split the node at the current longest common prefix
         // between the search key and the child node's prefix
-        let split_node: Arc<Node<T>> = Arc::new(Node {
-            prefix: RwLock::new(search[..common_prefix_len].to_string()),
-            ..Default::default()
-        });
+        let split_node: Arc<Node<T>> = Arc::new(Node::new(&search[..common_prefix_len], None));
 
         let writable_node = self.get_writable_node(node);
-        writable_node.replace_edge(Edge {
-            label: search.as_bytes()[0],
-            node: split_node.clone(),
-        });
+        writable_node.replace_edge(Edge::new(search.as_bytes()[0], split_node.clone()));
 
         // move the existing child node under the split node
         let modified_child_node = self.get_writable_node(child_node);
-        split_node.add_edge(Edge {
-            label: modified_child_node.prefix.read().as_bytes()[common_prefix_len],
-            node: modified_child_node.clone(),
-        });
+        split_node.add_edge(Edge::new(
+            modified_child_node.prefix.read().as_bytes()[common_prefix_len],
+            modified_child_node.clone(),
+        ));
         {
             // update the prefix of the modified child node to remove the split node common prefix
             let mut prefix_write_guard = modified_child_node.prefix.write();
@@ -141,10 +119,7 @@ impl<T: NodeValue> Txn<T> {
         let search = &search[common_prefix_len..];
 
         // create new leaf node and associate with the split node
-        let new_leaf_node = LeafNode {
-            key: key.to_string(),
-            value: value,
-        };
+        let new_leaf_node = LeafNode::new(key, value);
 
         // reach the end of the search key,
         // associate the new leaf node with the split node
@@ -153,14 +128,10 @@ impl<T: NodeValue> Txn<T> {
             return (Some(writable_node), None);
         }
 
-        let new_edge = Edge {
-            label: search.as_bytes()[0],
-            node: Arc::new(Node {
-                prefix: RwLock::new(search.to_string()),
-                leaf: RwLock::new(Some(Arc::new(new_leaf_node))),
-                ..Default::default()
-            }),
-        };
+        let new_edge = Edge::new(
+            search.as_bytes()[0],
+            Node::new(search, new_leaf_node.into()).into(),
+        );
         split_node.add_edge(new_edge);
 
         (Some(writable_node), None)
@@ -240,13 +211,7 @@ impl<T: NodeValue> Txn<T> {
                 self.merge_child(&writable_node);
             }
         } else {
-            writable_node.replace_edge_at(
-                edge_idx,
-                Edge {
-                    label,
-                    node: new_child_node,
-                },
-            );
+            writable_node.replace_edge_at(edge_idx, Edge::new(label, new_child_node));
         }
 
         (Some(writable_node), leaf)
@@ -304,13 +269,7 @@ impl<T: NodeValue> Txn<T> {
                 self.merge_child(&writable_node);
             }
         } else {
-            writable_node.replace_edge_at(
-                edge_idx,
-                Edge {
-                    label,
-                    node: new_child_node,
-                },
-            );
+            writable_node.replace_edge_at(edge_idx, Edge::new(label, new_child_node));
         }
         (Some(writable_node), deleted_count)
     }
@@ -325,7 +284,7 @@ impl<T: NodeValue> Txn<T> {
         );
 
         let child_edge = node.pop_edge().expect("node should have at least one edge");
-        let child_node = child_edge.node;
+        let child_node = child_edge.get_node();
 
         {
             // merge the prefixes
@@ -354,7 +313,7 @@ impl<T: NodeValue> Txn<T> {
             count += 1;
         }
         // recursively count child nodes
-        node.for_each_edge(|edge| count += self.count_node(&edge.node));
+        node.for_each_edge(|edge| count += self.count_node(edge.get_node()));
         count
     }
 }
@@ -389,7 +348,7 @@ impl<T: NodeValue> Txn<T> {
         if let Some(old_value) = old_value {
             self.size.fetch_sub(1, Ordering::Relaxed);
             // TODO: revisit to unwrap from Arc
-            return Some(old_value.value.clone());
+            return Some(old_value.get_value().clone());
         }
         None
     }
@@ -467,14 +426,7 @@ mod tests {
             let (_, child_node) = edge.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("001".to_string()),
-                    leaf: RwLock::new(Some(Arc::new(LeafNode {
-                        key: "001".to_string(),
-                        value: 1,
-                    }))),
-                    ..Default::default()
-                }
+                Node::new("001", LeafNode::new("001", 1).into()).into()
             );
         }
 
@@ -491,35 +443,17 @@ mod tests {
             let (_, child_node) = edge.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("00".to_string()),
-                    leaf: RwLock::new(None),
-                    edges: vec![
-                        Edge {
-                            label: b'1',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("1".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "001".to_string(),
-                                    value: 1,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
-                        Edge {
-                            label: b'2',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("2".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "002".to_string(),
-                                    value: 2,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
+                Node::new_with_edges(
+                    "00",
+                    None,
+                    vec![
+                        Edge::new(b'1', Node::new("1", LeafNode::new("001", 1).into()).into()),
+                        Edge::new(
+                            b'2',
+                            Arc::new(Node::new("2", LeafNode::new("002", 2).into())),
+                        ),
                     ]
-                    .into(),
-                }
+                )
             );
         }
 
@@ -536,46 +470,15 @@ mod tests {
             let (_, child_node) = edge.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("00".to_string()),
-                    leaf: RwLock::new(None),
-                    edges: vec![
-                        Edge {
-                            label: b'1',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("1".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "001".to_string(),
-                                    value: 1,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
-                        Edge {
-                            label: b'2',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("2".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "002".to_string(),
-                                    value: 2,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
-                        Edge {
-                            label: b'3',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("3".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "003".to_string(),
-                                    value: 3,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
+                Node::new_with_edges(
+                    "00",
+                    None,
+                    vec![
+                        Edge::new(b'1', Node::new("1", LeafNode::new("001", 1).into()).into()),
+                        Edge::new(b'2', Node::new("2", LeafNode::new("002", 2).into()).into()),
+                        Edge::new(b'3', Node::new("3", LeafNode::new("003", 3).into()).into()),
                     ]
-                    .into(),
-                }
+                )
             );
         }
 
@@ -592,67 +495,38 @@ mod tests {
             let (_, child_node) = edge.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("0".to_string()),
-                    leaf: RwLock::new(None),
-                    edges: vec![
-                        Edge {
-                            label: b'0',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("0".to_string()),
-                                leaf: RwLock::new(None),
-                                edges: vec![
-                                    Edge {
-                                        label: b'1',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("1".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "001".to_string(),
-                                                value: 1,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'2',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("2".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "002".to_string(),
-                                                value: 2,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'3',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("3".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "003".to_string(),
-                                                value: 3,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    }
+                Node::new_with_edges(
+                    "0",
+                    None,
+                    vec![
+                        Edge::new(
+                            b'0',
+                            Node::new_with_edges(
+                                "0",
+                                None,
+                                vec![
+                                    Edge::new(
+                                        b'1',
+                                        Node::new("1", LeafNode::new("001", 1).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'2',
+                                        Node::new("2", LeafNode::new("002", 2).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'3',
+                                        Node::new("3", LeafNode::new("003", 3).into()).into()
+                                    ),
                                 ]
-                                .into(),
-                            }),
-                        },
-                        Edge {
-                            label: b'1',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("10".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "010".to_string(),
-                                    value: 10,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
+                            )
+                            .into()
+                        ),
+                        Edge::new(
+                            b'1',
+                            Node::new("10", LeafNode::new("010", 10).into()).into()
+                        ),
                     ]
-                    .into(),
-                }
+                )
             );
         }
 
@@ -669,67 +543,38 @@ mod tests {
             let (_, child_node) = edge_0.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("0".to_string()),
-                    leaf: RwLock::new(None),
-                    edges: vec![
-                        Edge {
-                            label: b'0',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("0".to_string()),
-                                leaf: RwLock::new(None),
-                                edges: vec![
-                                    Edge {
-                                        label: b'1',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("1".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "001".to_string(),
-                                                value: 1,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'2',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("2".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "002".to_string(),
-                                                value: 2,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'3',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("3".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "003".to_string(),
-                                                value: 3,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    }
-                                ]
-                                .into(),
-                            }),
-                        },
-                        Edge {
-                            label: b'1',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("10".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "010".to_string(),
-                                    value: 10,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
+                Node::new_with_edges(
+                    "0",
+                    None,
+                    vec![
+                        Edge::new(
+                            b'0',
+                            Node::new_with_edges(
+                                "0",
+                                None,
+                                vec![
+                                    Edge::new(
+                                        b'1',
+                                        Node::new("1", LeafNode::new("001", 1).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'2',
+                                        Node::new("2", LeafNode::new("002", 2).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'3',
+                                        Node::new("3", LeafNode::new("003", 3).into()).into()
+                                    ),
+                                ],
+                            )
+                            .into()
+                        ),
+                        Edge::new(
+                            b'1',
+                            Node::new("10", LeafNode::new("010", 10).into()).into()
+                        ),
                     ]
-                    .into(),
-                }
+                ),
             );
 
             let edge_1 = root.get_edge(b'1');
@@ -737,14 +582,7 @@ mod tests {
             let (_, child_node) = edge_1.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("100".to_string()),
-                    leaf: RwLock::new(Some(Arc::new(LeafNode {
-                        key: "100".to_string(),
-                        value: 100,
-                    }))),
-                    ..Default::default()
-                }
+                Node::new("100", LeafNode::new("100", 100).into()).into(),
             );
         }
 
@@ -762,67 +600,38 @@ mod tests {
             let (_, child_node) = edge_0.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("0".to_string()),
-                    leaf: RwLock::new(None),
-                    edges: vec![
-                        Edge {
-                            label: b'0',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("0".to_string()),
-                                leaf: RwLock::new(None),
-                                edges: vec![
-                                    Edge {
-                                        label: b'1',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("1".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "001".to_string(),
-                                                value: 1,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'2',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("2".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "002".to_string(),
-                                                value: 20,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    },
-                                    Edge {
-                                        label: b'3',
-                                        node: Arc::new(Node {
-                                            prefix: RwLock::new("3".to_string()),
-                                            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                                key: "003".to_string(),
-                                                value: 3,
-                                            }))),
-                                            ..Default::default()
-                                        }),
-                                    }
+                Node::new_with_edges(
+                    "0",
+                    None,
+                    vec![
+                        Edge::new(
+                            b'0',
+                            Node::new_with_edges(
+                                "0",
+                                None,
+                                vec![
+                                    Edge::new(
+                                        b'1',
+                                        Node::new("1", LeafNode::new("001", 1).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'2',
+                                        Node::new("2", LeafNode::new("002", 20).into()).into()
+                                    ),
+                                    Edge::new(
+                                        b'3',
+                                        Node::new("3", LeafNode::new("003", 3).into()).into()
+                                    ),
                                 ]
-                                .into(),
-                            }),
-                        },
-                        Edge {
-                            label: b'1',
-                            node: Arc::new(Node {
-                                prefix: RwLock::new("10".to_string()),
-                                leaf: RwLock::new(Some(Arc::new(LeafNode {
-                                    key: "010".to_string(),
-                                    value: 10,
-                                }))),
-                                ..Default::default()
-                            }),
-                        },
+                            )
+                            .into()
+                        ),
+                        Edge::new(
+                            b'1',
+                            Node::new("10", LeafNode::new("010", 10).into()).into()
+                        )
                     ]
-                    .into(),
-                }
+                )
             );
         }
 
@@ -840,14 +649,7 @@ mod tests {
             let (_, child_node) = edge_1.unwrap();
             assert_eq!(
                 *child_node,
-                Node {
-                    prefix: RwLock::new("100".to_string()),
-                    leaf: RwLock::new(Some(Arc::new(LeafNode {
-                        key: "100".to_string(),
-                        value: 200,
-                    }))),
-                    ..Default::default()
-                }
+                Node::new("100", LeafNode::new("100", 200).into()).into(),
             );
         }
     }
@@ -1008,30 +810,16 @@ mod tests {
             ..Default::default()
         });
 
-        let child_node = Arc::new(Node {
-            prefix: RwLock::new("child".to_string()),
-            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                key: "child_key".to_string(),
-                value: 42,
-            }))),
-            edges: vec![Edge {
-                label: b'1',
-                node: Arc::new(Node {
-                    prefix: RwLock::new("1".to_string()),
-                    leaf: RwLock::new(Some(Arc::new(LeafNode {
-                        key: "001".to_string(),
-                        value: 1,
-                    }))),
-                    ..Default::default()
-                }),
-            }]
-            .into(),
-        });
+        let child_node = Arc::new(Node::new_with_edges(
+            "child",
+            LeafNode::new("child_key", 42).into(),
+            vec![Edge::new(
+                b'1',
+                Node::new("1", LeafNode::new("001", 1).into()).into(),
+            )],
+        ));
 
-        parent_node.add_edge(Edge {
-            label: b'c',
-            node: child_node.clone(),
-        });
+        parent_node.add_edge(Edge::new(b'c', child_node.clone()));
 
         // merge the child into the parent
         txn.merge_child(parent_node.as_ref());
@@ -1043,22 +831,15 @@ mod tests {
         let leaf = parent_node.leaf.read();
         assert!(leaf.is_some());
         let leaf = leaf.as_ref().unwrap();
-        assert_eq!(leaf.key, "child_key");
-        assert_eq!(leaf.value, 42);
+        assert_eq!(leaf.get_key(), "child_key");
+        assert_eq!(*leaf.get_value(), 42);
         assert_eq!(parent_node.edge_len(), 1);
         assert_eq!(
             parent_node.edges,
-            vec![Edge {
-                label: b'1',
-                node: Arc::new(Node {
-                    prefix: RwLock::new("1".to_string()),
-                    leaf: RwLock::new(Some(Arc::new(LeafNode {
-                        key: "001".to_string(),
-                        value: 1,
-                    }))),
-                    ..Default::default()
-                }),
-            }]
+            vec![Edge::new(
+                b'1',
+                Node::new("1", LeafNode::new("001", 1).into()).into()
+            )]
             .into()
         );
     }
@@ -1072,16 +853,8 @@ mod tests {
             writable: None,
         };
 
-        let leaf_node = Arc::new(Node {
-            prefix: RwLock::new("leaf".to_string()),
-            leaf: RwLock::new(Some(Arc::new(LeafNode {
-                key: "leaf_key".to_string(),
-                value: 42,
-            }))),
-            ..Default::default()
-        });
-
-        txn.merge_child(leaf_node.as_ref());
+        let leaf_node = Node::new("leaf", LeafNode::new("leaf_key", 42).into());
+        txn.merge_child(&leaf_node);
     }
 
     #[test]
@@ -1093,20 +866,11 @@ mod tests {
             writable: None,
         };
 
-        let parent_node = Arc::new(Node {
-            prefix: RwLock::new("parent".to_string()),
-            ..Default::default()
-        });
+        let parent_node = Node::new("parent", None);
 
-        parent_node.add_edge(Edge {
-            label: b'a',
-            node: Arc::new(Node::default()),
-        });
-        parent_node.add_edge(Edge {
-            label: b'b',
-            node: Arc::new(Node::default()),
-        });
+        parent_node.add_edge(Edge::new(b'a', Node::default().into()));
+        parent_node.add_edge(Edge::new(b'b', Node::default().into()));
 
-        txn.merge_child(parent_node.as_ref());
+        txn.merge_child(&parent_node);
     }
 }
