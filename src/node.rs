@@ -7,13 +7,12 @@ use parking_lot::RwLock;
 
 use crate::utils::NodeValue;
 
-#[derive(Debug, Default, Clone, Hash, Eq)]
+#[derive(Debug, Default, Hash, Eq)]
 pub struct Edge<T>
 where
     T: NodeValue,
 {
     label: u8,
-    // TODO: re-check if we need deep clone here
     node: Arc<Node<T>>,
 }
 
@@ -26,6 +25,15 @@ impl<T: NodeValue> Edge<T> {
     /// Get the node of the edge.
     pub(crate) fn get_node(&self) -> &Node<T> {
         &self.node
+    }
+}
+
+impl<T: NodeValue> Clone for Edge<T> {
+    fn clone(&self) -> Self {
+        Self {
+            label: self.label,
+            node: (*self.node).clone().into(),
+        }
     }
 }
 
