@@ -320,7 +320,23 @@ impl<T: NodeValue> Txn<T> {
 
 /// Public APIs for Txn
 impl<T: NodeValue> Txn<T> {
-    /// insert add/update a given key. If the key already exists, its value is updated and the old value is returned.
+    /// Get the number of nodes in the transaction.
+    pub fn len(&self) -> u32 {
+        self.size.load(Ordering::Relaxed)
+    }
+
+    /// Get the root node of the transaction.
+    pub fn root(&self) -> Arc<Node<T>> {
+        self.root.read().clone()
+    }
+
+    // Retrieve the value associated with the given key if exists.
+    pub fn get(&self, key: &str) -> Option<T> {
+        let root = self.root.read();
+        root.get(key)
+    }
+
+    /// Add/Update a given key. If the key already exists, its value is updated and the old value is returned.
     pub fn insert(&mut self, key: &str, value: T) -> Option<T> {
         let root = self.root.read().clone();
         let (new_node, old_value) = self.internal_insert(root, key, key, value);
@@ -337,7 +353,7 @@ impl<T: NodeValue> Txn<T> {
         old_value
     }
 
-    /// delete removes the given key from the tree. If the key exists, its value is returned.
+    /// Removes the given key from the tree. If the key exists, its value is returned.
     pub fn delete(&mut self, key: &str) -> Option<T> {
         let root = self.root.read().clone();
         let (new_root, old_value) = self.internal_delete(root, key);
@@ -353,7 +369,7 @@ impl<T: NodeValue> Txn<T> {
         None
     }
 
-    /// delete_prefix removes all keys with the given prefix from the tree.
+    /// Removes all keys with the given prefix from the tree.
     /// Returns true if any keys were deleted.
     pub fn delete_prefix(&mut self, prefix: &str) -> bool {
         let root = self.root.read().clone();
@@ -367,7 +383,7 @@ impl<T: NodeValue> Txn<T> {
         false
     }
 
-    /// commit finalizes the transaction and returns the new tree.
+    /// Finalizes the transaction and returns the new tree.
     pub fn commit(&mut self) -> Tree<T> {
         // clear writable cache
         self.writable.take();
@@ -404,6 +420,52 @@ mod tests {
             txn_clone.size.load(Ordering::Relaxed)
         );
         assert_eq!(txn_clone.size.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_txn_len() {
+        let mut txn: Txn<bool> = Txn {
+            root: RwLock::new(Arc::new(Node::default())),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+        assert_eq!(txn.len(), 0);
+
+        txn.insert("", true);
+        assert_eq!(txn.len(), 1);
+    }
+
+    #[test]
+    fn test_txn_root() {
+        let mut txn: Txn<bool> = Txn {
+            root: RwLock::new(Node::new("", LeafNode::new("test", true).into()).into()),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        let expected_root = Node::new("", LeafNode::new("test", true).into());
+        assert_eq!(&expected_root, txn.root().as_ref());
+
+        txn.insert("key", true);
+        let modified_root = txn.root();
+        assert_eq!(modified_root.as_ref(), txn.root.read().as_ref());
+        assert_ne!(&expected_root, modified_root.as_ref());
+    }
+
+    #[test]
+    fn test_txn_get() {
+        let mut txn: Txn<bool> = Txn {
+            root: RwLock::new(Node::new("", LeafNode::new("test", true).into()).into()),
+            size: AtomicU32::new(0),
+            writable: None,
+        };
+
+        let result = txn.get("");
+        assert_eq!(result, Some(true));
+
+        txn.insert("key", true);
+        let result = txn.get("key");
+        assert_eq!(result, Some(true));
     }
 
     #[test]
