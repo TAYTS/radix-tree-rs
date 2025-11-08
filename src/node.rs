@@ -59,7 +59,7 @@ impl<T: NodeValue> From<Vec<Edge<T>>> for Edges<T> {
 }
 
 impl<T: NodeValue> Edges<T> {
-    /// add_edge adds an edge to the edges maintaining sorted order
+    /// Adds an edge to the edges while maintaining sorted order.
     fn add_edge(&self, edge: Edge<T>) {
         let insert_idx = self
             .0
@@ -69,7 +69,7 @@ impl<T: NodeValue> Edges<T> {
         self.0.write().insert(insert_idx, edge);
     }
 
-    /// replace_edge replaces the node of the edge with the same label
+    /// Replaces the node of the edge with the same label.
     fn replace_edge(&self, edge: Edge<T>) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -84,7 +84,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// replace_edge_at replaces the node of the edge at the given index
+    /// Replaces the node of the edge at the given index.
     fn replace_edge_at(&self, index: usize, edge: Edge<T>) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -96,7 +96,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// get_edge return the index and node of the edge with the given label
+    /// Returns the index and node of the edge with the given label.
     fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
         let edge_idx = self_edges
@@ -111,7 +111,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// get_edge_at returns the node of the edge at the given index
+    /// Returns the node of the edge at the given index.
     fn get_edge_at(&self, index: usize) -> Option<Arc<Node<T>>> {
         let self_edges = self.0.read();
         if index < self_edges.len() {
@@ -121,7 +121,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
+    /// Returns the index and node of the lowest edge with label >= given label.
     fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         let self_edges = self.0.read();
         let edge_idx = self_edges
@@ -136,7 +136,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// delete_edge removes the edge with the given label
+    /// Deletes the edge with the given label.
     fn delete_edge(&self, label: u8) {
         let self_edges = self.0.read();
         let self_edges_slice = self_edges.as_slice();
@@ -149,17 +149,17 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// is_empty returns true if there are no edges
+    /// Returns true if there are no edges.
     fn is_empty(&self) -> bool {
         self.0.read().is_empty()
     }
 
-    /// len returns the number of edges
+    /// Returns the number of edges.
     fn len(&self) -> usize {
         self.0.read().len()
     }
 
-    /// first returns the first edge's node if exists
+    /// Returns the first edge's node if exists.
     fn first(&self) -> Option<Arc<Node<T>>> {
         let self_edges = self.0.read();
         if !self_edges.is_empty() {
@@ -169,7 +169,7 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// last returns the last edge's node if exists
+    /// Returns the last edge's node if exists.
     fn last(&self) -> Option<Arc<Node<T>>> {
         let self_edges = self.0.read();
         if !self_edges.is_empty() {
@@ -179,23 +179,23 @@ impl<T: NodeValue> Edges<T> {
         }
     }
 
-    /// clear removes all edges
+    /// Removes all edges data.
     fn clear(&self) {
         self.0.write().clear();
     }
 
-    /// reset removes all edges and resets capacity
+    /// Removes all edges and resets allocated capacity.
     fn reset(&self) {
         self.0.write().clear();
         *self.0.write() = Vec::new();
     }
 
-    /// pop removes and returns the last edge
+    /// Removes the last edge and returns it if exists.
     fn pop(&self) -> Option<Edge<T>> {
         self.0.write().pop()
     }
 
-    /// collect_into drains all edges from self and inserts them into other
+    /// Drains all edges from self and inserts them into other
     fn collect_into(&self, other: &Edges<T>) {
         let mut self_guard = self.0.write();
         let mut other_guard = other.0.write();
@@ -210,7 +210,7 @@ impl<T: NodeValue> Edges<T> {
         other_guard.extend(self_iter);
     }
 
-    /// for_each iterates over each edge and applies the given function
+    /// Iterates over each edge and applies the given function
     fn for_each<F>(&self, f: F)
     where
         F: FnMut(&Edge<T>),
@@ -270,7 +270,7 @@ impl<T: NodeValue> PartialEq for Node<T> {
 impl<T: NodeValue> Eq for Node<T> {}
 
 impl<T: NodeValue> Node<T> {
-    /// new creates a new node with the given prefix and optional leaf node
+    /// Creates a new node with the given prefix and optional leaf node.
     pub(crate) fn new(prefix: &str, leaf: Option<LeafNode<T>>) -> Self {
         Self {
             prefix: RwLock::new(prefix.to_string()),
@@ -279,62 +279,60 @@ impl<T: NodeValue> Node<T> {
         }
     }
 
-    /// is_leaf returns true if the node is a leaf node.
-    /// This should only be used internally as a Node is immutable from outside.
+    /// Returns true if the node is a leaf node.
     pub(crate) fn is_leaf(&self) -> bool {
         self.leaf.read().is_some()
     }
 
-    /// replace_prefix replaces the prefix of the node
-    /// warning: this is only for internal use during transaction processing
+    /// Replaces the prefix of the node.
     pub(crate) fn replace_prefix(&self, prefix: &str) {
         let mut write_guard = self.prefix.write();
         *write_guard = prefix.to_string();
     }
 
-    /// replace_leaf replaces the leaf node
+    /// Replaces the leaf node.
     pub(crate) fn replace_leaf(&self, leaf: Option<LeafNode<T>>) {
         let mut write_guard = self.leaf.write();
         let leaf_node = leaf.map(|l| Arc::new(l));
         *write_guard = leaf_node;
     }
 
-    /// add_edge adds an edge to the node
+    /// Adds an edge to the node.
     pub(crate) fn add_edge(&self, edge: Edge<T>) {
         self.edges.add_edge(edge);
     }
 
-    /// replace_edge replaces the node of the edge with the same label
+    /// Replaces the node of the edge with the same label.
     pub(crate) fn replace_edge(&self, edge: Edge<T>) {
         self.edges.replace_edge(edge);
     }
 
-    /// replace_edge_at replaces the node of the edge at the given index
+    /// Replaces the node of the edge at the given index.
     pub(crate) fn replace_edge_at(&self, index: usize, edge: Edge<T>) {
         self.edges.replace_edge_at(index, edge);
     }
 
-    /// get_edge return the index and node of the edge with the given label
+    /// Returns the index and node of the edge with the given label.
     pub(crate) fn get_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_edge(label)
     }
 
-    /// get_edge_at returns the node of the edge at the given index
+    /// Returns the node of the edge at the given index.
     pub(crate) fn get_edge_at(&self, index: usize) -> Option<Arc<Node<T>>> {
         self.edges.get_edge_at(index)
     }
 
-    /// get_lower_bound_edge returns the index and node of the lowest edge with label >= given label
+    /// Returns the index and node of the lowest edge with label >= given label.
     pub(crate) fn get_lower_bound_edge(&self, label: u8) -> Option<(usize, Arc<Node<T>>)> {
         self.edges.get_lower_bound_edge(label)
     }
 
-    /// delete_edge removes the edge with the given label
+    /// Deletes the edge with the given label.
     pub(crate) fn delete_edge(&self, label: u8) {
         self.edges.delete_edge(label);
     }
 
-    /// get returns the value associated with the given key if exists
+    /// Returns the value associated with the given key if exists.
     pub fn get(&self, key: &str) -> Option<T> {
         let mut search_bytes = key.as_bytes();
         let mut current_node: Option<Arc<Node<T>>> = None;
@@ -370,7 +368,7 @@ impl<T: NodeValue> Node<T> {
         None
     }
 
-    /// longest_prefix returns the key and value with the longest prefix match for the given key
+    /// Returns the key and value with the longest prefix match for the given key.
     pub fn longest_prefix(&self, key: &str) -> Option<(String, T)> {
         let mut last: Option<Arc<LeafNode<T>>> = None;
         let mut search_bytes = key.as_bytes();
@@ -413,7 +411,7 @@ impl<T: NodeValue> Node<T> {
         }
     }
 
-    /// minimum returns the key and value with the minimum key in the subtree.
+    /// Returns the key and value with the minimum key in the subtree.
     pub fn minimum(&self) -> Option<(String, T)> {
         let mut current_node: Option<Arc<Node<T>>> = None;
         loop {
@@ -438,7 +436,7 @@ impl<T: NodeValue> Node<T> {
         None
     }
 
-    /// maximum returns the key and value with the maximum key in the subtree.
+    /// Returns the key and value with the maximum key in the subtree.
     pub fn maximum(&self) -> Option<(String, T)> {
         let mut current_node: Option<Arc<Node<T>>> = None;
         loop {
@@ -463,47 +461,47 @@ impl<T: NodeValue> Node<T> {
         None
     }
 
-    /// empty_edge returns true if there are no edges
+    /// Returns true if there are no edges.
     pub fn empty_edge(&self) -> bool {
         self.edges.is_empty()
     }
 
-    /// edge_len returns the number of edges
+    /// Returns the number of edges.
     pub fn edge_len(&self) -> usize {
         self.edges.len()
     }
 
-    /// first_edge returns the first edge's node if exists
+    /// Returns the first edge's node if exists.
     pub fn first_edge(&self) -> Option<Arc<Node<T>>> {
         self.edges.first()
     }
 
-    /// last_edge returns the last edge's node if exists
+    /// Returns the last edge's node if exists.
     pub fn last_edge(&self) -> Option<Arc<Node<T>>> {
         self.edges.last()
     }
 
-    /// clear_edges removes all edges
+    /// Clears all edges.
     pub fn clear_edges(&self) {
         self.edges.clear();
     }
 
-    /// reset_edges removes all edges and resets capacity
+    /// Resets all edges and clears capacity.
     pub fn reset_edges(&self) {
         self.edges.reset();
     }
 
-    /// pop_edge removes and returns the last edge
+    /// Removes and returns the last edge.
     pub fn pop_edge(&self) -> Option<Edge<T>> {
         self.edges.pop()
     }
 
-    /// collect_into_edges collects all edges from self and inserts them into other
+    /// Collects all edges from self and inserts them into other.
     pub fn collect_into_edges(&self, edges: &Edges<T>) {
         self.edges.collect_into(edges)
     }
 
-    /// for_each_edge iterates over each edge and applies the given function
+    /// Iterates over each edge and applies the given function.
     pub fn for_each_edge<F>(&self, f: F)
     where
         F: FnMut(&Edge<T>),
