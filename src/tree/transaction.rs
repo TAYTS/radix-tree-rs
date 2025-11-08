@@ -384,9 +384,7 @@ impl<T: NodeValue> Txn<T> {
     }
 
     /// Finalizes the transaction and returns the new tree.
-    pub fn commit(&mut self) -> Tree<T> {
-        // clear writable cache
-        self.writable.take();
+    pub fn commit(self) -> Tree<T> {
         // TODO: support notifying subscribers about the changes
         Tree {
             root: self.root.read().clone(),
@@ -397,38 +395,28 @@ impl<T: NodeValue> Txn<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
-
     use super::*;
 
     #[test]
     fn test_txn_clone() {
-        let mut txn: Txn<u32> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<u32>::new();
+        let mut txn = tree.start_transaction();
 
         txn.insert("001", 1);
         txn.insert("002", 2);
 
         let txn_clone = txn.clone();
 
-        assert_eq!(txn.root.read().as_ref(), txn_clone.root.read().as_ref());
-        assert_eq!(
-            txn.size.load(Ordering::Relaxed),
-            txn_clone.size.load(Ordering::Relaxed)
-        );
-        assert_eq!(txn_clone.size.load(Ordering::Relaxed), 2);
+        assert_eq!(txn.root(), txn_clone.root());
+        assert_eq!(txn.len(), txn_clone.len(),);
+        assert_eq!(txn_clone.len(), 2);
     }
 
     #[test]
     fn test_txn_len() {
-        let mut txn: Txn<bool> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<bool>::new();
+        let mut txn = tree.start_transaction();
+
         assert_eq!(txn.len(), 0);
 
         txn.insert("", true);
@@ -437,13 +425,11 @@ mod tests {
 
     #[test]
     fn test_txn_root() {
-        let mut txn: Txn<bool> = Txn {
-            root: RwLock::new(Node::new("", LeafNode::new("test", true).into()).into()),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<bool>::new();
+        let mut txn = tree.start_transaction();
+        txn.insert("", true);
 
-        let expected_root = Node::new("", LeafNode::new("test", true).into());
+        let expected_root = Node::new("", LeafNode::new("", true).into());
         assert_eq!(&expected_root, txn.root().as_ref());
 
         txn.insert("key", true);
@@ -454,11 +440,9 @@ mod tests {
 
     #[test]
     fn test_txn_get() {
-        let mut txn: Txn<bool> = Txn {
-            root: RwLock::new(Node::new("", LeafNode::new("test", true).into()).into()),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<bool>::new();
+        let mut txn = tree.start_transaction();
+        txn.insert("", true);
 
         let result = txn.get("");
         assert_eq!(result, Some(true));
@@ -470,11 +454,8 @@ mod tests {
 
     #[test]
     fn test_txn_insert() {
-        let mut txn: Txn<u32> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<u32>::new();
+        let mut txn = tree.start_transaction();
 
         {
             let result = txn.insert("001", 1);
@@ -718,11 +699,8 @@ mod tests {
 
     #[test]
     fn test_txn_delete() {
-        let mut txn: Txn<bool> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<bool>::new();
+        let mut txn = tree.start_transaction();
 
         let mock_keys = vec!["", "001", "002", "003", "010", "100"];
 
@@ -754,20 +732,18 @@ mod tests {
         // TODO: verify the tree structure(keys) after deletion
         {
             // prefix not a node in tree
-            let mut txn: Txn<bool> = Txn {
-                root: RwLock::new(Arc::new(Node::default())),
-                size: AtomicU32::new(0),
-                writable: None,
-            };
+            let tree = Tree::<bool>::new();
+            let mut txn = tree.start_transaction();
             let mock_keys = vec!["", "test/test1", "test/test2", "test/test3", "R", "RA"];
             for key in mock_keys.iter() {
                 let result = txn.insert(key, true);
                 assert!(result.is_none());
             }
-            txn.commit();
-
             let old_size = txn.size.load(atomic::Ordering::Relaxed);
             assert_eq!(old_size, 6);
+
+            let new_tree = txn.commit();
+            let mut txn = new_tree.start_transaction();
 
             let has_deleted = txn.delete_prefix("test");
             assert!(has_deleted);
@@ -776,11 +752,8 @@ mod tests {
 
         {
             // prefix is a node in tree
-            let mut txn: Txn<bool> = Txn {
-                root: RwLock::new(Arc::new(Node::default())),
-                size: AtomicU32::new(0),
-                writable: None,
-            };
+            let tree = Tree::<bool>::new();
+            let mut txn = tree.start_transaction();
             let mock_keys = vec![
                 "",
                 "test",
@@ -795,10 +768,11 @@ mod tests {
                 let result = txn.insert(key, true);
                 assert!(result.is_none());
             }
-            txn.commit();
-
             let old_size = txn.size.load(atomic::Ordering::Relaxed);
             assert_eq!(old_size, 8);
+
+            let tree = txn.commit();
+            let mut txn = tree.start_transaction();
 
             let has_deleted = txn.delete_prefix("test");
             assert!(has_deleted);
@@ -807,11 +781,8 @@ mod tests {
 
         {
             // longer prefix and not a node in tree
-            let mut txn: Txn<bool> = Txn {
-                root: RwLock::new(Arc::new(Node::default())),
-                size: AtomicU32::new(0),
-                writable: None,
-            };
+            let tree = Tree::<bool>::new();
+            let mut txn = tree.start_transaction();
             let mock_keys = vec![
                 "",
                 "test/test1",
@@ -825,10 +796,11 @@ mod tests {
                 let result = txn.insert(key, true);
                 assert!(result.is_none());
             }
-            txn.commit();
-
             let old_size = txn.size.load(atomic::Ordering::Relaxed);
             assert_eq!(old_size, 7);
+
+            let tree = txn.commit();
+            let mut txn = tree.start_transaction();
 
             let has_deleted = txn.delete_prefix("test/test");
             assert!(has_deleted);
@@ -837,20 +809,19 @@ mod tests {
 
         {
             // prefix match single node
-            let mut txn: Txn<bool> = Txn {
-                root: RwLock::new(Arc::new(Node::default())),
-                size: AtomicU32::new(0),
-                writable: None,
-            };
+            let tree = Tree::<bool>::new();
+            let mut txn = tree.start_transaction();
             let mock_keys = vec!["", "AB", "ABC", "AR", "R", "RA"];
             for key in mock_keys.iter() {
                 let result = txn.insert(key, true);
                 assert!(result.is_none());
             }
-            txn.commit();
 
             let old_size = txn.size.load(atomic::Ordering::Relaxed);
             assert_eq!(old_size, 6);
+
+            let tree = txn.commit();
+            let mut txn = tree.start_transaction();
 
             let has_deleted = txn.delete_prefix("AR");
             assert!(has_deleted);
@@ -860,17 +831,11 @@ mod tests {
 
     #[test]
     fn test_txn_merge_child() {
-        let mut txn: Txn<u32> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<u32>::new();
+        let mut txn = tree.start_transaction();
 
         // construct a node with single child
-        let parent_node = Arc::new(Node {
-            prefix: RwLock::new("parent".to_string()),
-            ..Default::default()
-        });
+        let parent_node = Node::new("parent", None);
 
         let child_node = Arc::new(Node::new_with_edges(
             "child",
@@ -884,7 +849,7 @@ mod tests {
         parent_node.add_edge(Edge::new(b'c', child_node.clone()));
 
         // merge the child into the parent
-        txn.merge_child(parent_node.as_ref());
+        txn.merge_child(&parent_node);
 
         // verify the parent node has been updated correctly
         assert_eq!(parent_node.prefix.read().as_str(), "parentchild");
@@ -909,11 +874,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "cannot merge a leaf node")]
     fn test_txn_merge_child_panic_for_leaf_node() {
-        let mut txn: Txn<u32> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<u32>::new();
+        let mut txn = tree.start_transaction();
 
         let leaf_node = Node::new("leaf", LeafNode::new("leaf_key", 42).into());
         txn.merge_child(&leaf_node);
@@ -922,11 +884,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "node must have a single edge to merge")]
     fn test_txn_merge_child_panic_for_multiple_edges() {
-        let mut txn: Txn<u32> = Txn {
-            root: RwLock::new(Arc::new(Node::default())),
-            size: AtomicU32::new(0),
-            writable: None,
-        };
+        let tree = Tree::<u32>::new();
+        let mut txn = tree.start_transaction();
 
         let parent_node = Node::new("parent", None);
 

@@ -45,7 +45,7 @@ impl<T: NodeValue> Tree<T> {
     }
 
     /// Create a new transaction for the tree.
-    pub fn transaction(&self) -> Txn<T> {
+    pub fn start_transaction(&self) -> Txn<T> {
         Txn {
             root: RwLock::new(self.root.clone()),
             size: self.size.into(),
@@ -55,7 +55,7 @@ impl<T: NodeValue> Tree<T> {
 
     /// Insert a key-value pair into the tree, returning the new tree and the old value if exists.
     pub fn insert(&self, key: &str, value: T) -> (Tree<T>, Option<T>) {
-        let mut txn = self.transaction();
+        let mut txn = self.start_transaction();
         let old_value = txn.insert(key, value);
         let new_tree = txn.commit();
         (new_tree, old_value)
@@ -63,7 +63,7 @@ impl<T: NodeValue> Tree<T> {
 
     /// Delete a key from the tree, returning the new tree and the old value if exists.
     pub fn delete(&self, key: &str) -> (Tree<T>, Option<T>) {
-        let mut txn = self.transaction();
+        let mut txn = self.start_transaction();
         let old_value = txn.delete(key);
         let new_tree = txn.commit();
         (new_tree, old_value)
@@ -71,7 +71,7 @@ impl<T: NodeValue> Tree<T> {
 
     /// Delete all keys with the given prefix from the tree, returning the new tree and a boolean indicating if any keys were deleted.
     pub fn delete_prefix(&self, prefix: &str) -> (Tree<T>, bool) {
-        let mut txn = self.transaction();
+        let mut txn = self.start_transaction();
         let has_deleted = txn.delete_prefix(prefix);
         let new_tree = txn.commit();
         (new_tree, has_deleted)
