@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 mod transaction;
+#[cfg(test)]
+mod tree_test;
 
 use std::sync::Arc;
 
@@ -8,6 +10,8 @@ use parking_lot::lock_api::RwLock;
 
 use crate::{node::Node, tree::transaction::Txn, utils::NodeValue};
 
+/// Immutable radix tree with prefix based lookup.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Tree<T>
 where
     T: NodeValue,
@@ -16,17 +20,15 @@ where
     size: u32,
 }
 
-pub fn new<T>() -> Tree<T>
-where
-    T: NodeValue,
-{
-    Tree {
-        root: Node::default().into(),
-        size: 0,
-    }
-}
-
 impl<T: NodeValue> Tree<T> {
+    /// Create a new empty tree.
+    pub fn new() -> Self {
+        Tree {
+            root: Node::default().into(),
+            size: 0,
+        }
+    }
+
     /// Get the number of node in the tree.
     pub fn len(&self) -> u32 {
         self.size
