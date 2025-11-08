@@ -46,8 +46,9 @@ impl<T: NodeValue> Tree<T> {
 
     /// Create a new transaction for the tree.
     pub fn start_transaction(&self) -> Txn<T> {
+        let root = (*self.root).clone();
         Txn {
-            root: RwLock::new(self.root.clone()),
+            root: RwLock::new(root.into()),
             size: self.size.into(),
             writable: None,
         }
