@@ -44,19 +44,33 @@ mod tests {
             .into(),
         }
         .into();
+        let original_child_node = original_node.first_edge().unwrap();
 
         let cloned_node = original_node.clone();
-        cloned_node.reset_edges();
+        let cloned_child_node = cloned_node.first_edge().unwrap();
+        {
+            cloned_child_node.reset_edges();
+            let mut write_guard = cloned_child_node.leaf.write();
+            write_guard.take();
+        }
 
-        assert_eq!(
-            cloned_node.edge_len(),
-            0,
-            "cloned node should have no edges"
+        assert!(
+            !cloned_child_node.is_leaf(),
+            "child node should have no leaf"
+        );
+        assert!(
+            original_child_node.is_leaf(),
+            "original child node should remain unchanged"
         );
         assert_eq!(
-            original_node.edge_len(),
+            cloned_child_node.edge_len(),
+            0,
+            "child node should have no edges"
+        );
+        assert_eq!(
+            original_child_node.edge_len(),
             1,
-            "original node should remain unchanged"
+            "original child node should remain unchanged"
         );
     }
 
