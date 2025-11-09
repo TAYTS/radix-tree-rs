@@ -27,25 +27,29 @@ mod tests {
                 txn.insert(key, true);
             }
 
-            assert_eq!(txn.len(), 4);
-            assert_eq!(tree.len(), 0);
+            assert_eq!(txn.len(), 4, "txn size should be 4 after insertions");
+            assert_eq!(tree.len(), 0, "original tree size should still be 0");
 
             for key in insert_keys.iter() {
                 let result = txn.get(key);
-                assert_eq!(result, Some(true));
+                assert_eq!(result, Some(true), "key '{key}' should exist in txn");
             }
 
             for key in insert_keys.iter() {
                 let result = tree.get(key);
-                assert_eq!(result, None);
+                assert_eq!(result, None, "key '{key}' should not exist in tree");
             }
 
             tree = txn.commit();
-            assert_eq!(tree.len(), 4);
+            assert_eq!(tree.len(), 4, "tree size should be 4 after commit");
 
             for key in insert_keys.iter() {
                 let result = tree.get(key);
-                assert_eq!(result, Some(true));
+                assert_eq!(
+                    result,
+                    Some(true),
+                    "key '{key}' should exist in tree after commit"
+                );
             }
         }
 
@@ -134,5 +138,51 @@ mod tests {
                 "key '{check_key}' should still exist in tree after commit"
             );
         }
+    }
+
+    #[test]
+    fn test_tree_operations() {
+        let tree = Tree::<bool>::new();
+
+        let (tree, old_value) = tree.insert("001", true);
+        assert_eq!(old_value, None, "old value should be None on first insert");
+        assert_eq!(tree.len(), 1, "tree size should be 1 after insertion");
+        assert_eq!(tree.get("001"), Some(true), "key '001' should exist");
+
+        let (tree, old_value) = tree.insert("001", false);
+        assert_eq!(
+            old_value,
+            Some(true),
+            "old value should be Some(true) on update"
+        );
+        assert_eq!(tree.len(), 1, "tree size should still be 1 after update");
+        assert_eq!(
+            tree.get("001"),
+            Some(false),
+            "key '001' should be updated to false"
+        );
+
+        let (tree, old_value) = tree.delete("001");
+        assert_eq!(
+            old_value,
+            Some(false),
+            "old value should be Some(false) on delete"
+        );
+        assert_eq!(tree.len(), 0, "tree size should be 0 after deletion");
+        assert_eq!(
+            tree.get("001"),
+            None,
+            "key '001' should not exist after deletion"
+        );
+
+        let (tree, _) = tree.insert("001", true);
+        let (tree, _) = tree.insert("002", true);
+        let (tree, _) = tree.insert("003", true);
+        let (tree, _) = tree.insert("010", true);
+        let (tree, _) = tree.insert("100", true);
+
+        let (tree, has_deleted) = tree.delete_prefix("00");
+        assert!(has_deleted, "should delete keys with prefix '00'");
+        assert_eq!(tree.len(), 2, "tree size should be 2 after prefix deletion");
     }
 }
